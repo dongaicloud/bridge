@@ -26,10 +26,10 @@ class WeChatActionEngine {
         private const val ID_CHAT_NAME = "com.tencent.mm:id/k6"            // 聊天标题
 
         // 延迟配置
-        private const val DELAY_AFTER_OPEN = 1500L      // 打开微信后等待
-        private const val DELAY_AFTER_CLICK = 500L      // 点击后等待
-        private const val DELAY_AFTER_INPUT = 300L      // 输入后等待
-        private const val DELAY_SEARCH_RESULT = 1000L   // 等待搜索结果
+        private const val DELAY_AFTER_OPEN = 3000L      // 打开微信后等待（增加时间）
+        private const val DELAY_AFTER_CLICK = 800L      // 点击后等待
+        private const val DELAY_AFTER_INPUT = 500L      // 输入后等待
+        private const val DELAY_SEARCH_RESULT = 1500L   // 等待搜索结果
     }
 
     /**
@@ -141,9 +141,12 @@ class WeChatActionEngine {
         val desc = node.contentDescription?.toString() ?: ""
         val id = node.viewIdResourceName ?: ""
         val className = node.className?.toString()?.substringAfterLast(".") ?: ""
+        val bounds = android.graphics.Rect()
+        node.getBoundsInScreen(bounds)
 
-        if (text.isNotEmpty() || desc.isNotEmpty() || id.isNotEmpty()) {
-            Log.d(TAG, "$indent [$className] text='$text' desc='$desc' id='$id' clickable=${node.isClickable}")
+        // 打印所有节点（深度限制为 3 层）
+        if (depth <= 3) {
+            Log.d(TAG, "$indent[$className] text='$text' desc='$desc' id='$id' clickable=${node.isClickable} bounds=$bounds")
         }
 
         for (i in 0 until node.childCount) {
