@@ -97,6 +97,12 @@ class WeChatActionEngine {
      * 打开搜索
      */
     private suspend fun openSearch(service: BridgeAccessibilityService): TaskResult {
+        // 先打印所有节点信息用于调试
+        val root = service.getRootNode()
+        if (root != null) {
+            dumpNodeInfo(root, 0)
+        }
+
         // 方式1: 尝试点击搜索按钮（按ID）
         var searchBtn = service.findNodeById(ID_SEARCH_BTN)
 
@@ -107,8 +113,12 @@ class WeChatActionEngine {
 
         if (searchBtn == null) {
             // 方式3: 查找带放大镜图标的按钮
-            val root = service.getRootNode()
             searchBtn = root?.let { findNodeByDesc(it, "搜索") }
+        }
+
+        // 方式4: 查找 ImageView 或 ImageButton（搜索图标）
+        if (searchBtn == null && root != null) {
+            searchBtn = findImageButton(root)
         }
 
         if (searchBtn == null) {
@@ -120,6 +130,46 @@ class WeChatActionEngine {
         } else {
             TaskResult.fail("无法点击搜索按钮")
         }
+    }
+
+    /**
+     * 打印节点信息（调试用）
+     */
+    private fun dumpNodeInfo(node: AccessibilityNodeInfo, depth: Int) {
+        val indent = "  ".repeat(depth)
+        val text = node.text?.toString() ?: ""
+        val desc = node.contentDescription?.toString() ?: ""
+        val id = node.viewIdResourceName ?: ""
+        val className = node.className?.toString()?.substringAfterLast(".") ?: ""
+
+        if (text.isNotEmpty() || desc.isNotEmpty() || id.isNotEmpty()) {
+            Log.d(TAG, "$indent [$className] text='$text' desc='$desc' id='$id' clickable=${node.isClickable}")
+        }
+
+        for (i in 0 until node.childCount) {
+            node.getChild(i)?.let { dumpNodeInfo(it, depth + 1) }
+        }
+    }
+
+    /**
+     * 查找 ImageButton 或 ImageView（可能是搜索按钮）
+     */
+    private fun findImageButton(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        val className = root.className?.toString() ?: ""
+        if ((className.contains("ImageButton") || className.contains("ImageView")) && root.isClickable) {
+            // 检查是否在右上角区域（搜索按钮通常在右上角）
+            val bounds = android.graphics.Rect()
+            root.getBoundsInScreen(bounds)
+            if (bounds.right > 800 && bounds.top < 300) {
+                return root
+            }
+        }
+        for (i in 0 until root.childCount) {
+            val child = root.getChild(i) ?: continue
+            val result = findImageButton(child)
+            if (result != null) return result
+        }
+        return null
     }
 
     /**
