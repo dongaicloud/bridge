@@ -2,8 +2,11 @@ package com.bridge.action
 
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.android.asCoroutineDispatcher
+import java.util.concurrent.AbstractExecutorService
+import java.util.concurrent.TimeUnit
 
 /**
  * Action Dispatcher - 单线程 UI 操作调度器
@@ -25,7 +28,7 @@ object ActionDispatcher {
     /**
      * 协程调度器 - 用于 withContext(dispatcher) { ... }
      */
-    val dispatcher: CoroutineDispatcher = handler.asCoroutineDispatcher()
+    val dispatcher: CoroutineDispatcher = HandlerExecutor(handler).asCoroutineDispatcher()
 
     /**
      * 获取线程名称（用于调试）
@@ -45,5 +48,32 @@ object ActionDispatcher {
      */
     fun shutdown() {
         handlerThread.quitSafely()
+    }
+}
+
+/**
+ * Handler 到 ExecutorService 的适配器
+ */
+private class HandlerExecutor(private val handler: Handler) : AbstractExecutorService() {
+
+    override fun execute(command: Runnable) {
+        handler.post(command)
+    }
+
+    override fun shutdown() {
+        handler.looper.quit()
+    }
+
+    override fun shutdownNow(): MutableList<Runnable> {
+        handler.looper.quit()
+        return mutableListOf()
+    }
+
+    override fun isShutdown(): Boolean = !handler.looper.isCurrentThread
+
+    override fun isTerminated(): Boolean = !handler.looper.isCurrentThread
+
+    override fun awaitTermination(timeout: Long, unit: TimeUnit): Boolean {
+        return false
     }
 }
