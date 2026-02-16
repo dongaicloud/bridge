@@ -1,3 +1,5 @@
+import java.util.concurrent.TimeUnit
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -22,7 +24,7 @@ fun getVersionInfo(): Pair<Int, String> {
             .start()
 
         val output = process.inputStream.bufferedReader().readText().trim()
-        process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
+        process.waitFor(5, TimeUnit.SECONDS)
 
         if (output.startsWith("v")) {
             // 解析 v1.0.36 格式
