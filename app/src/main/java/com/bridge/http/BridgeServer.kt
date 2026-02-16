@@ -184,6 +184,7 @@ class BridgeServer(port: Int) : NanoHTTPD(port) {
 
     /**
      * 解析 JSON 请求体
+     * 使用 UTF-8 编码确保中文正确解析
      */
     private fun parseBody(session: IHTTPSession): Map<String, Any> {
         val files = mutableMapOf<String, String>()
@@ -191,10 +192,15 @@ class BridgeServer(port: Int) : NanoHTTPD(port) {
 
         val body = files["postData"] ?: return emptyMap()
         return try {
-            gson.fromJson(body, JsonObject::class.java).let { json ->
+            // 使用 UTF-8 编码解析
+            val utf8Body = String(body.toByteArray(Charsets.ISO_8859_1), Charsets.UTF_8)
+            Log.d(TAG, "收到请求体: $utf8Body")
+
+            gson.fromJson(utf8Body, JsonObject::class.java).let { json ->
                 json.entrySet().associate { it.key to (it.value.asString) }
             }
         } catch (e: Exception) {
+            Log.e(TAG, "解析请求体失败: ${e.message}")
             emptyMap()
         }
     }
