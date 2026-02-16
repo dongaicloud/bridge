@@ -11,11 +11,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bridge.util.CoordinatePicker
 import com.bridge.util.Tool
 import com.bridge.util.ToolManager
+import kotlin.math.abs
 import kotlin.random.Random
 
 class ToolManagerActivity : AppCompatActivity() {
@@ -76,6 +78,40 @@ class ToolManagerActivity : AppCompatActivity() {
             return
         }
 
+        val service = BridgeAccessibilityService.instance
+        if (service == null) {
+            Toast.makeText(this, "请先启用无障碍服务", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        Toast.makeText(this, "正在执行前置步骤...", Toast.LENGTH_SHORT).show()
+
+        // 在后台线程执行前置工具链
+        Thread {
+            try {
+                // 获取前置工具链（不包含当前工具本身）
+                val allTools = ToolManager.getAllTools(this)
+                val preTools = tool.preToolIds.mapNotNull { id -> allTools.find { it.id == id } }
+
+                for (t in preTools) {
+                    android.util.Log.d("ToolManager", "执行前置工具: ${t.name}")
+                    executeTool(t, service)
+                }
+
+                runOnUiThread {
+                    Toast.makeText(this, "请在屏幕上点击选择位置", Toast.LENGTH_SHORT).show()
+                    showCoordinatePicker(tool)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ToolManager", "执行前置工具失败", e)
+                runOnUiThread {
+                    Toast.makeText(this, "前置步骤失败: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun showCoordinatePicker(tool: Tool) {
         currentPickingToolId = tool.id
         coordinatePicker?.dismiss()
         coordinatePicker = CoordinatePicker(
@@ -100,6 +136,41 @@ class ToolManagerActivity : AppCompatActivity() {
             initialY = if (tool.y > 0) tool.y else null
         )
         coordinatePicker?.show()
+    }
+
+    private fun executeTool(tool: Tool, service: BridgeAccessibilityService) {
+        when (tool.id) {
+            ToolManager.TOOL_OPEN_WECHAT -> {
+                service.openWeChat()
+                randomDelay(6000, 12000)
+            }
+            ToolManager.TOOL_SET_CLIPBOARD -> {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText(null, "test"))
+                randomDelay(1800, 4500)
+            }
+            ToolManager.TOOL_GO_BACK -> {
+                service.goBack()
+                randomDelay(1500, 3600)
+            }
+            else -> {
+                // 用户定义的坐标工具
+                if (tool.x > 0 && tool.y > 0) {
+                    val screenBounds = service.getScreenBounds()
+                    val x = (screenBounds.width() * tool.x).toInt()
+                    val y = (screenBounds.height() * tool.y).toInt()
+
+                    // 特殊处理：输入法剪贴板需要等待键盘
+                    if (tool.name.contains("剪贴板") || tool.name.contains("输入法")) {
+                        randomDelay(3000, 6000)
+                    }
+
+                    service.clickAt(x, y)
+                    android.util.Log.d("ToolManager", "点击 ${tool.name}: ($x, $y)")
+                    randomDelay(1500, 3600)
+                }
+            }
+        }
     }
 
     private fun testTool(tool: Tool) {
@@ -211,10 +282,33 @@ class ToolManagerActivity : AppCompatActivity() {
             onRemove = { t ->
                 selectedPreTools.remove(t)
                 preToolAdapter.notifyDataSetChanged()
+            },
+            onMove = { fromPosition, toPosition ->
+                // 顺序已经在 adapter 中更新了，这里只需要刷新显示
             }
         )
         preToolsList.layoutManager = LinearLayoutManager(this)
         preToolsList.adapter = preToolAdapter
+
+        // 添加拖拽排序支持
+        val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN,
+            0
+        ) {
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean {
+                preToolAdapter.onItemMove(viewHolder.adapterPosition, target.adapterPosition)
+                return true
+            }
+
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                // 不支持滑动删除
+            }
+        })
+        itemTouchHelper.attachToRecyclerView(preToolsList)
 
         // 获取坐标按钮
         pickCoordBtn.setOnClickListener {
@@ -419,10 +513,11 @@ class ToolManagerActivity : AppCompatActivity() {
         override fun getItemCount() = tools.size
     }
 
-    // 已选前置工具适配器
+    // 已选前置工具适配器（支持拖拽排序）
     inner class PreToolAdapter(
-        private val tools: List<Tool>,
-        private val onRemove: (Tool) -> Unit
+        private val tools: MutableList<Tool>,
+        private val onRemove: (Tool) -> Unit,
+        private val onMove: (fromPosition: Int, toPosition: Int) -> Unit
     ) : RecyclerView.Adapter<PreToolAdapter.ViewHolder>() {
 
         inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
@@ -445,6 +540,15 @@ class ToolManagerActivity : AppCompatActivity() {
         }
 
         override fun getItemCount() = tools.size
+
+        fun onItemMove(fromPosition: Int, toPosition: Int) {
+            val item = tools.removeAt(fromPosition)
+            tools.add(toPosition, item)
+            notifyItemMoved(fromPosition, toPosition)
+            // 更新序号
+            notifyItemRangeChanged(minOf(fromPosition, toPosition), abs(toPosition - fromPosition) + 1)
+            onMove(fromPosition, toPosition)
+        }
     }
 
     // 工具选择适配器
