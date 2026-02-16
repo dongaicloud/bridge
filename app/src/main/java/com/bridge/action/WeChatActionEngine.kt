@@ -42,10 +42,10 @@ class WeChatActionEngine {
         private val COORD_MESSAGE_INPUT = CoordinateRatio(0.35f, 0.955f)  // 消息输入框（底部偏左）
         private val COORD_SEND_BTN = CoordinateRatio(0.92f, 0.955f)       // 发送按钮（底部右侧）
 
-        // 输入法键盘上的剪贴板区域坐标（QWE键盘上方）
+        // 输入法键盘上的剪贴板区域坐标
         // 注意：输入法是独立APP，无法通过无障碍访问，只能用坐标点击
-        // 根据截图分析：QWE键在Y≈73%-77%，剪贴板内容在Y≈60%-65%
-        private val COORD_IME_CLIPBOARD = CoordinateRatio(0.50f, 0.60f)   // 输入法剪贴板内容区域
+        // 根据截图分析：剪贴板内容显示在键盘右下角的"中/英"切换按钮位置
+        private val COORD_IME_CLIPBOARD = CoordinateRatio(0.85f, 0.78f)   // 输入法剪贴板（右下角中/英切换按钮）
     }
 
     /**
