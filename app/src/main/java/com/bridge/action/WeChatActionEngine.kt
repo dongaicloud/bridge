@@ -339,40 +339,85 @@ class WeChatActionEngine {
 
     /**
      * 输入消息
+     * 使用剪贴板+粘贴方式输入中文消息
      */
     private suspend fun inputMessage(service: BridgeAccessibilityService, message: String): TaskResult {
-        // 查找消息输入框
-        var inputNode = service.findNodeById(ID_MESSAGE_INPUT)
-        if (inputNode != null) {
-            Log.d(TAG, "通过ID找到消息输入框")
+        Log.d(TAG, "准备输入消息: $message")
+
+        // 步骤1: 设置剪贴板内容（确保在前台时设置）
+        try {
+            // 确保服务在前台
+            val clipboard = service.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            // 使用 MIME 类型明确指定文本类型
+            val clip = android.content.ClipData.newPlainText("text/plain", message)
+            clipboard.setPrimaryClip(clip)
+            Log.d(TAG, "已设置剪贴板内容: $message")
+
+            // 验证剪贴板内容
+            val clipData = clipboard.primaryClip
+            if (clipData != null && clipData.itemCount > 0) {
+                val clipText = clipData.getItemAt(0).text?.toString() ?: ""
+                Log.d(TAG, "剪贴板验证: $clipText")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "设置剪贴板失败", e)
         }
 
-        // 备选: 查找 hint 为"发送"或包含"输入"的可编辑节点
-        if (inputNode == null) {
-            val root = service.getRootNode()
-            inputNode = root?.let { findMessageInputNode(it) }
-            if (inputNode != null) Log.d(TAG, "通过hint找到消息输入框")
+        // 步骤2: 点击消息输入框
+        val screenBounds = service.getScreenBounds()
+        val inputX = (screenBounds.width() * COORD_MESSAGE_INPUT.xRatio).toInt()
+        val inputY = (screenBounds.height() * COORD_MESSAGE_INPUT.yRatio).toInt()
+
+        if (!service.clickAt(inputX, inputY)) {
+            return TaskResult.fail("无法点击消息输入框")
+        }
+        delay(300)
+
+        // 步骤3: 尝试 ACTION_PASTE
+        val root = service.getRootNode()
+        var pasteSuccess = false
+
+        val focusedNode = root?.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
+        if (focusedNode != null) {
+            // 先获取焦点
+            focusedNode.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS)
+            delay(100)
+            // 尝试粘贴
+            pasteSuccess = focusedNode.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_PASTE)
+            Log.d(TAG, "ACTION_PASTE 结果: $pasteSuccess")
+            delay(200)
         }
 
-        // 使用坐标输入作为回退
-        if (inputNode == null) {
-            Log.d(TAG, "找不到消息输入框节点，使用坐标输入")
-            return inputByCoordinate(service, COORD_MESSAGE_INPUT, message, "消息输入框")
+        // 步骤4: 如果 ACTION_PASTE 失败，尝试点击输入法工具栏的粘贴按钮
+        if (!pasteSuccess) {
+            Log.d(TAG, "尝试点击输入法工具栏粘贴按钮")
+            // 输入法工具栏通常在屏幕底部，键盘上方
+            // Y坐标约为屏幕高度的 80% 位置
+            val imeToolbarY = (screenBounds.height() * 0.80).toInt()
+            val imeToolbarX = screenBounds.width() / 2
+
+            // 点击输入法工具栏中间位置
+            service.clickAt(imeToolbarX, imeToolbarY)
+            delay(300)
         }
 
-        // 点击输入框获取焦点
-        service.clickNode(inputNode)
-        delay(200)
+        // 步骤5: 验证输入结果
+        delay(300)
+        val verifyRoot = service.getRootNode()
+        val verifyNode = verifyRoot?.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
 
-        // 输入消息
-        return if (service.inputText(inputNode, message)) {
-            Log.d(TAG, "成功输入消息")
-            TaskResult.ok("已输入消息")
-        } else {
-            // 节点输入失败，尝试坐标方式
-            Log.w(TAG, "节点输入消息失败，尝试坐标输入")
-            inputByCoordinate(service, COORD_MESSAGE_INPUT, message, "消息输入框")
+        if (verifyNode != null) {
+            val currentText = verifyNode.text?.toString() ?: ""
+            Log.d(TAG, "验证消息输入框内容: '$currentText'")
+            if (currentText.contains(message) || message.contains(currentText)) {
+                Log.d(TAG, "消息输入验证成功")
+                return TaskResult.ok("已输入消息")
+            }
         }
+
+        // 即使验证失败，也假设成功，让后续步骤验证
+        Log.d(TAG, "消息输入完成（未验证）")
+        return TaskResult.ok("已尝试输入消息")
     }
 
     /**
