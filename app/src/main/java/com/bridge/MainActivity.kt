@@ -397,7 +397,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // 协程辅助函数
-    private suspend fun <T> withContext(context: kotlin.coroutines.CoroutineContext, block: suspend () -> T): T {
+    private suspend fun <T> withContext(context: kotlin.coroutines.CoroutineContext, block: suspend kotlinx.coroutines.CoroutineScope.() -> T): T {
         return kotlinx.coroutines.withContext(context, block)
     }
 }
