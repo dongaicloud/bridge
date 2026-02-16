@@ -113,7 +113,11 @@ class WeChatActionEngine {
         var retryCount = 0
         val maxRetries = 5
 
-        while (root == null || root.bounds == android.graphics.Rect(0, 0, 0, 0)) {
+        val emptyBounds = android.graphics.Rect(0, 0, 0, 0)
+        val rootBounds = android.graphics.Rect()
+        root?.getBoundsInScreen(rootBounds)
+
+        while (root == null || rootBounds == emptyBounds) {
             retryCount++
             if (retryCount > maxRetries) {
                 Log.e(TAG, "无法获取有效的根节点")
@@ -124,6 +128,7 @@ class WeChatActionEngine {
             Log.d(TAG, "等待微信界面加载... ($retryCount/$maxRetries)")
             delay(500)
             root = service.getRootNode()
+            root?.getBoundsInScreen(rootBounds)
         }
 
         // 打印节点信息用于调试
