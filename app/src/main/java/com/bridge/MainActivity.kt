@@ -16,8 +16,24 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
+
+    // 随机延迟函数（单位：毫秒）
+    private fun randomDelay(minMs: Long, maxMs: Long) {
+        val delay = minMs + Random.nextLong(maxMs - minMs)
+        Thread.sleep(delay)
+    }
+
+    // 常用延迟配置 - 模拟正常人操作频率 (x3)
+    private fun delayAfterClick() = randomDelay(1500, 3600)      // 点击后
+    private fun delayAfterOpenApp() = randomDelay(6000, 12000)   // 打开应用后
+    private fun delayAfterInput() = randomDelay(1800, 4500)      // 输入后
+    private fun delayAfterSearch() = randomDelay(4500, 9000)     // 搜索后等待结果
+    private fun delayAfterIME() = randomDelay(4500, 9000)        // 输入法操作后
+    private fun delayBetweenSteps() = randomDelay(2400, 4500)    // 步骤之间
+    private fun delayKeyboardShow() = randomDelay(3000, 6000)    // 等待键盘弹出
 
     private lateinit var statusText: TextView
     private lateinit var accessibilityBtn: Button
@@ -298,7 +314,7 @@ class MainActivity : AppCompatActivity() {
                 android.util.Log.d("Bridge", "打开微信...")
                 val opened = service.openWeChat()
                 android.util.Log.d("Bridge", "打开微信结果: $opened")
-                Thread.sleep(2000)
+                delayAfterOpenApp()
 
                 if (step == 1) {
                     // 直接点击目标位置
@@ -311,22 +327,24 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // 点击搜索按钮
+                delayBetweenSteps()
                 val x1 = (screenBounds.width() * ConfigManager.getSearchBtnX(this)).toInt()
                 val y1 = (screenBounds.height() * ConfigManager.getSearchBtnY(this)).toInt()
                 android.util.Log.d("Bridge", "点击搜索按钮: ($x1, $y1)")
                 service.clickAt(x1, y1)
-                Thread.sleep(1000)
+                delayAfterClick()
 
                 if (step == 2) {
                     // 设置剪贴板并触发输入法
+                    delayBetweenSteps()
                     val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     clipboard.setPrimaryClip(android.content.ClipData.newPlainText(null, "test"))
-                    Thread.sleep(500)
+                    delayAfterInput()
 
                     val inputX = (screenBounds.width() * 0.50f).toInt()
                     val inputY = (screenBounds.height() * 0.05f).toInt()
                     service.clickAt(inputX, inputY)
-                    Thread.sleep(1500)
+                    delayKeyboardShow()
 
                     val x = (screenBounds.width() * ConfigManager.getImeClipboardX(this)).toInt()
                     val y = (screenBounds.height() * ConfigManager.getImeClipboardY(this)).toInt()
@@ -337,24 +355,26 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // 后续步骤的准备工作
+                delayBetweenSteps()
                 val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText(null, "test"))
-                Thread.sleep(500)
+                delayAfterInput()
 
                 val inputX = (screenBounds.width() * 0.50f).toInt()
                 val inputY = (screenBounds.height() * 0.05f).toInt()
                 service.clickAt(inputX, inputY)
-                Thread.sleep(1000)
+                delayKeyboardShow()
 
                 // 点击输入法剪贴板
+                delayBetweenSteps()
                 val x2 = (screenBounds.width() * ConfigManager.getImeClipboardX(this)).toInt()
                 val y2 = (screenBounds.height() * ConfigManager.getImeClipboardY(this)).toInt()
                 service.clickAt(x2, y2)
-                Thread.sleep(500)
+                delayAfterIME()
 
                 if (step == 3) {
                     // 等待搜索结果显示
-                    Thread.sleep(1000)
+                    delayAfterSearch()
                     val x = (screenBounds.width() * ConfigManager.getContactX(this)).toInt()
                     val y = (screenBounds.height() * ConfigManager.getContactY(this)).toInt()
                     android.util.Log.d("Bridge", "步骤3点击联系人: ($x, $y)")
@@ -364,10 +384,11 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // 点击联系人
+                delayAfterSearch()
                 val x3 = (screenBounds.width() * ConfigManager.getContactX(this)).toInt()
                 val y3 = (screenBounds.height() * ConfigManager.getContactY(this)).toInt()
                 service.clickAt(x3, y3)
-                Thread.sleep(1000)
+                delayAfterClick()
 
                 if (step == 4) {
                     val x = (screenBounds.width() * ConfigManager.getMsgInputX(this)).toInt()
@@ -379,14 +400,15 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // 点击消息输入框
+                delayBetweenSteps()
                 val x4 = (screenBounds.width() * ConfigManager.getMsgInputX(this)).toInt()
                 val y4 = (screenBounds.height() * ConfigManager.getMsgInputY(this)).toInt()
                 service.clickAt(x4, y4)
-                Thread.sleep(500)
+                delayAfterClick()
 
                 if (step == 5) {
-                    service.goBack()
-                    Thread.sleep(300)
+                    // 注意：不隐藏键盘，因为发送按钮坐标是在键盘弹出时获取的
+                    delayKeyboardShow()
                     val x = (screenBounds.width() * ConfigManager.getSendBtnX(this)).toInt()
                     val y = (screenBounds.height() * ConfigManager.getSendBtnY(this)).toInt()
                     android.util.Log.d("Bridge", "步骤5点击: ($x, $y)")
