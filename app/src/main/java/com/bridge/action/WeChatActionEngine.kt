@@ -489,42 +489,37 @@ class WeChatActionEngine {
                 }
             }
 
-            // 方式3: 尝试粘贴操作
-            if (!inputSuccess) {
-                // 先尝试节点的粘贴操作
-                val pasteNode = root?.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
-                    ?: root?.let { findEditableNodeInBounds(it, coord, screenBounds) }
+            // 方式3: 长按 + 点击粘贴菜单（最可靠的方式）
+            Log.d(TAG, "尝试长按粘贴方式")
+            if (service.longPressAt(x, y)) {
+                delay(800)  // 等待菜单弹出
+                // 粘贴菜单通常出现在点击位置下方
+                // 尝试点击多个可能的粘贴菜单位置
+                val pastePositions = listOf(
+                    Pair(x, y + 80),   // 正下方
+                    Pair(x, y + 100),  // 稍低
+                    Pair(x, y + 120),  // 更低
+                    Pair(x, y + 150),  // 最低
+                    Pair(x - 50, y + 100), // 左下方
+                    Pair(x + 50, y + 100), // 右下方
+                    Pair(x, y + 200),  // 更低位置
+                )
 
-                if (pasteNode != null) {
-                    inputSuccess = pasteNode.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_PASTE)
-                    if (inputSuccess) {
-                        Log.d(TAG, "通过节点粘贴操作成功")
-                    }
+                for ((px, py) in pastePositions) {
+                    Log.d(TAG, "尝试点击粘贴位置: ($px, $py)")
+                    service.clickAt(px, py)
+                    delay(300)
                 }
             }
 
-            // 方式4: 长按 + 点击粘贴菜单
-            if (!inputSuccess) {
-                Log.d(TAG, "尝试长按粘贴方式")
-                if (service.longPressAt(x, y)) {
-                    delay(600)
-                    // 粘贴菜单通常出现在点击位置下方
-                    // 尝试点击几个可能的位置
-                    val pastePositions = listOf(
-                        Pair(x, y + 80),   // 正下方
-                        Pair(x, y + 120),  // 更下方
-                        Pair(x - 50, y + 100), // 左下方
-                        Pair(x + 50, y + 100)  // 右下方
-                    )
+            // 方式4: 尝试 ACTION_PASTE（可能被微信阻止）
+            val pasteNode = root?.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
+                ?: service.getRootNode()?.let { findEditableNodeInBounds(it, coord, screenBounds) }
 
-                    for ((px, py) in pastePositions) {
-                        if (service.clickAt(px, py)) {
-                            delay(200)
-                            Log.d(TAG, "尝试点击粘贴位置: ($px, $py)")
-                        }
-                    }
-                    inputSuccess = true  // 假设成功
-                }
+            if (pasteNode != null) {
+                val pasteResult = pasteNode.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_PASTE)
+                Log.d(TAG, "ACTION_PASTE 结果: $pasteResult")
+                delay(300)
             }
 
             // 验证输入结果
