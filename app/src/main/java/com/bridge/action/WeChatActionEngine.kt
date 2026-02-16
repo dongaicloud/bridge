@@ -41,6 +41,10 @@ class WeChatActionEngine {
         private val COORD_FIRST_CONTACT = CoordinateRatio(0.50f, 0.213f)  // 搜索结果第一个联系人
         private val COORD_MESSAGE_INPUT = CoordinateRatio(0.35f, 0.955f)  // 消息输入框（底部偏左）
         private val COORD_SEND_BTN = CoordinateRatio(0.92f, 0.955f)       // 发送按钮（底部右侧）
+
+        // 输入法键盘上的剪贴板区域坐标（QWE键盘上方）
+        // 注意：输入法是独立APP，无法通过无障碍访问，只能用坐标点击
+        private val COORD_IME_CLIPBOARD = CoordinateRatio(0.50f, 0.75f)   // 输入法剪贴板内容区域（屏幕中间偏下）
     }
 
     /**
@@ -232,7 +236,8 @@ class WeChatActionEngine {
 
     /**
      * 输入搜索词
-     * 由于微信阻止无障碍输入，使用剪贴板+长按粘贴方式
+     * 由于微信阻止无障碍输入，使用剪贴板+点击输入法剪贴板区域方式
+     * 注意：输入法是独立APP，剪贴板内容显示在输入法键盘上，需要用坐标点击
      */
     private suspend fun inputSearchQuery(service: BridgeAccessibilityService, query: String): TaskResult {
         // 将中文转换为拼音首字母
@@ -249,35 +254,48 @@ class WeChatActionEngine {
             Log.e(TAG, "设置剪贴板失败", e)
         }
 
-        // 点击搜索输入框
+        // 获取屏幕尺寸
         val screenBounds = service.getScreenBounds()
+        Log.d(TAG, "屏幕尺寸: ${screenBounds.width()}x${screenBounds.height()}")
+
+        // 步骤1: 点击搜索输入框，触发输入法弹出
         val inputX = (screenBounds.width() * COORD_SEARCH_INPUT.xRatio).toInt()
         val inputY = (screenBounds.height() * COORD_SEARCH_INPUT.yRatio).toInt()
 
+        Log.d(TAG, "点击搜索输入框: ($inputX, $inputY)")
         if (!service.clickAt(inputX, inputY)) {
             return TaskResult.fail("无法点击搜索输入框")
         }
-        delay(300)
 
-        // 长按搜索框，等待粘贴菜单弹出
-        Log.d(TAG, "长按搜索框等待粘贴菜单")
-        if (service.longPressAt(inputX, inputY)) {
-            delay(800)
+        // 等待输入法键盘弹出
+        delay(800)
 
-            // 尝试点击粘贴菜单（通常在长按位置下方）
-            val pastePositions = listOf(
-                Pair(inputX, inputY + 80),
-                Pair(inputX, inputY + 100),
-                Pair(inputX, inputY + 120),
-                Pair(inputX, inputY + 150)
-            )
+        // 步骤2: 点击输入法键盘上的剪贴板区域
+        // 输入法是独立APP，剪贴板内容（wjcszz）显示在QWE键盘上方
+        // 我们无法通过无障碍访问输入法界面，只能用坐标点击
+        val imeX = (screenBounds.width() * COORD_IME_CLIPBOARD.xRatio).toInt()
+        val imeY = (screenBounds.height() * COORD_IME_CLIPBOARD.yRatio).toInt()
 
-            for ((px, py) in pastePositions) {
-                Log.d(TAG, "尝试点击粘贴位置: ($px, $py)")
-                service.clickAt(px, py)
-                delay(200)
-            }
+        Log.d(TAG, "点击输入法剪贴板区域: ($imeX, $imeY)")
+
+        // 尝试点击多个位置，覆盖不同输入法的剪贴板显示区域
+        // 通常在屏幕中间偏下的位置（QWE键盘上方）
+        val clickPositions = listOf(
+            Pair(imeX, imeY),              // 中间位置
+            Pair(imeX, imeY - 50),         // 稍高
+            Pair(imeX, imeY + 50),         // 稍低
+            Pair(imeX, imeY - 100),        // 更高
+            Pair(imeX, imeY + 100),        // 更低
+        )
+
+        for ((px, py) in clickPositions) {
+            Log.d(TAG, "尝试点击输入法位置: ($px, $py)")
+            service.clickAt(px, py)
+            delay(200)
         }
+
+        // 等待输入生效
+        delay(500)
 
         // 返回成功，让后续步骤验证
         return TaskResult.ok("已尝试输入拼音: $pinyinInitials")
