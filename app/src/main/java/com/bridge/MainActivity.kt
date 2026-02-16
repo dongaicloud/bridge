@@ -285,58 +285,119 @@ class MainActivity : AppCompatActivity() {
         val stepNames = arrayOf("", "搜索按钮", "输入法剪贴板", "联系人", "消息输入框", "发送按钮")
         Toast.makeText(this, "开始测试步骤${step}: ${stepNames[step]}", Toast.LENGTH_SHORT).show()
 
-        // 在协程中执行前置步骤并点击
-        CoroutineScope(Dispatchers.Main).launch {
+        // 使用后台线程执行
+        Thread {
             try {
-                val success = executePreStepsForTest(step, service)
-                if (success) {
-                    // 点击目标位置
-                    val screenBounds = service.getScreenBounds()
-                    val x: Int
-                    val y: Int
-                    when (step) {
-                        1 -> {
-                            x = (screenBounds.width() * ConfigManager.getSearchBtnX(this@MainActivity)).toInt()
-                            y = (screenBounds.height() * ConfigManager.getSearchBtnY(this@MainActivity)).toInt()
-                        }
-                        2 -> {
-                            x = (screenBounds.width() * ConfigManager.getImeClipboardX(this@MainActivity)).toInt()
-                            y = (screenBounds.height() * ConfigManager.getImeClipboardY(this@MainActivity)).toInt()
-                        }
-                        3 -> {
-                            x = (screenBounds.width() * ConfigManager.getContactX(this@MainActivity)).toInt()
-                            y = (screenBounds.height() * ConfigManager.getContactY(this@MainActivity)).toInt()
-                        }
-                        4 -> {
-                            x = (screenBounds.width() * ConfigManager.getMsgInputX(this@MainActivity)).toInt()
-                            y = (screenBounds.height() * ConfigManager.getMsgInputY(this@MainActivity)).toInt()
-                        }
-                        5 -> {
-                            x = (screenBounds.width() * ConfigManager.getSendBtnX(this@MainActivity)).toInt()
-                            y = (screenBounds.height() * ConfigManager.getSendBtnY(this@MainActivity)).toInt()
-                        }
-                        else -> return@launch
-                    }
+                android.util.Log.d("Bridge", "=== 开始测试步骤 $step ===")
 
-                    // 执行点击
-                    android.util.Log.d("Bridge", "测试点击步骤$step: 坐标($x, $y), 屏幕(${screenBounds.width()}x${screenBounds.height()})")
+                // 获取屏幕尺寸
+                val screenBounds = service.getScreenBounds()
+                android.util.Log.d("Bridge", "屏幕尺寸: ${screenBounds.width()}x${screenBounds.height()}")
+
+                // 步骤1：打开微信
+                android.util.Log.d("Bridge", "打开微信...")
+                val opened = service.openWeChat()
+                android.util.Log.d("Bridge", "打开微信结果: $opened")
+                Thread.sleep(2000)
+
+                if (step == 1) {
+                    // 直接点击目标位置
+                    val x = (screenBounds.width() * ConfigManager.getSearchBtnX(this)).toInt()
+                    val y = (screenBounds.height() * ConfigManager.getSearchBtnY(this)).toInt()
+                    android.util.Log.d("Bridge", "步骤1点击: ($x, $y)")
                     service.clickAt(x, y)
-
-                    runOnUiThread {
-                        Toast.makeText(this@MainActivity, "已点击步骤${step}: ($x, $y)", Toast.LENGTH_SHORT).show()
-                    }
-                } else {
-                    runOnUiThread {
-                        Toast.makeText(this@MainActivity, "前置步骤执行失败", Toast.LENGTH_SHORT).show()
-                    }
+                    runOnUiThread { Toast.makeText(this, "已点击步骤1: ($x, $y)", Toast.LENGTH_SHORT).show() }
+                    return@Thread
                 }
+
+                // 点击搜索按钮
+                val x1 = (screenBounds.width() * ConfigManager.getSearchBtnX(this)).toInt()
+                val y1 = (screenBounds.height() * ConfigManager.getSearchBtnY(this)).toInt()
+                android.util.Log.d("Bridge", "点击搜索按钮: ($x1, $y1)")
+                service.clickAt(x1, y1)
+                Thread.sleep(1000)
+
+                if (step == 2) {
+                    // 设置剪贴板并触发输入法
+                    val clipboard = getSystemService(CLIPBOARD_MANAGER_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(null, "test"))
+                    Thread.sleep(500)
+
+                    val inputX = (screenBounds.width() * 0.50f).toInt()
+                    val inputY = (screenBounds.height() * 0.05f).toInt()
+                    service.clickAt(inputX, inputY)
+                    Thread.sleep(1500)
+
+                    val x = (screenBounds.width() * ConfigManager.getImeClipboardX(this)).toInt()
+                    val y = (screenBounds.height() * ConfigManager.getImeClipboardY(this)).toInt()
+                    android.util.Log.d("Bridge", "步骤2点击: ($x, $y)")
+                    service.clickAt(x, y)
+                    runOnUiThread { Toast.makeText(this, "已点击步骤2: ($x, $y)", Toast.LENGTH_SHORT).show() }
+                    return@Thread
+                }
+
+                // 后续步骤的准备工作
+                val clipboard = getSystemService(CLIPBOARD_MANAGER_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText(null, "test"))
+                Thread.sleep(500)
+
+                val inputX = (screenBounds.width() * 0.50f).toInt()
+                val inputY = (screenBounds.height() * 0.05f).toInt()
+                service.clickAt(inputX, inputY)
+                Thread.sleep(1000)
+
+                // 点击输入法剪贴板
+                val x2 = (screenBounds.width() * ConfigManager.getImeClipboardX(this)).toInt()
+                val y2 = (screenBounds.height() * ConfigManager.getImeClipboardY(this)).toInt()
+                service.clickAt(x2, y2)
+                Thread.sleep(500)
+
+                if (step == 3) {
+                    val x = (screenBounds.width() * ConfigManager.getContactX(this)).toInt()
+                    val y = (screenBounds.height() * ConfigManager.getContactY(this)).toInt()
+                    android.util.Log.d("Bridge", "步骤3点击: ($x, $y)")
+                    service.clickAt(x, y)
+                    runOnUiThread { Toast.makeText(this, "已点击步骤3: ($x, $y)", Toast.LENGTH_SHORT).show() }
+                    return@Thread
+                }
+
+                // 点击联系人
+                val x3 = (screenBounds.width() * ConfigManager.getContactX(this)).toInt()
+                val y3 = (screenBounds.height() * ConfigManager.getContactY(this)).toInt()
+                service.clickAt(x3, y3)
+                Thread.sleep(1000)
+
+                if (step == 4) {
+                    val x = (screenBounds.width() * ConfigManager.getMsgInputX(this)).toInt()
+                    val y = (screenBounds.height() * ConfigManager.getMsgInputY(this)).toInt()
+                    android.util.Log.d("Bridge", "步骤4点击: ($x, $y)")
+                    service.clickAt(x, y)
+                    runOnUiThread { Toast.makeText(this, "已点击步骤4: ($x, $y)", Toast.LENGTH_SHORT).show() }
+                    return@Thread
+                }
+
+                // 点击消息输入框
+                val x4 = (screenBounds.width() * ConfigManager.getMsgInputX(this)).toInt()
+                val y4 = (screenBounds.height() * ConfigManager.getMsgInputY(this)).toInt()
+                service.clickAt(x4, y4)
+                Thread.sleep(500)
+
+                if (step == 5) {
+                    service.goBack()
+                    Thread.sleep(300)
+                    val x = (screenBounds.width() * ConfigManager.getSendBtnX(this)).toInt()
+                    val y = (screenBounds.height() * ConfigManager.getSendBtnY(this)).toInt()
+                    android.util.Log.d("Bridge", "步骤5点击: ($x, $y)")
+                    service.clickAt(x, y)
+                    runOnUiThread { Toast.makeText(this, "已点击步骤5: ($x, $y)", Toast.LENGTH_SHORT).show() }
+                    return@Thread
+                }
+
             } catch (e: Exception) {
                 android.util.Log.e("Bridge", "测试坐标失败", e)
-                runOnUiThread {
-                    Toast.makeText(this@MainActivity, "测试失败: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+                runOnUiThread { Toast.makeText(this, "测试失败: ${e.message}", Toast.LENGTH_SHORT).show() }
             }
-        }
+        }.start()
     }
 
     // 执行前置步骤（用于获取坐标）

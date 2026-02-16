@@ -120,27 +120,35 @@ class CoordinatePicker(
         // 蒙层触摸事件
         view.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_DOWN) {
-                val x = event.x
-                val y = event.y
+                // 使用 rawX/rawY 获取屏幕绝对坐标
+                val rawX = event.rawX
+                val rawY = event.rawY
 
                 // 检查是否点击在底部面板上
                 val panelLocation = IntArray(2)
                 bottomPanel.getLocationOnScreen(panelLocation)
-                if (y >= panelLocation[1]) {
+                if (rawY >= panelLocation[1]) {
                     return@setOnTouchListener false
                 }
 
-                // 记录坐标
-                selectedX = x / screenWidth
-                selectedY = y / screenHeight
+                // 记录坐标（相对于屏幕尺寸的比例）
+                selectedX = rawX / screenWidth
+                selectedY = rawY / screenHeight
+
+                android.util.Log.d("CoordinatePicker", "点击坐标: raw=($rawX, $rawY), 屏幕=(${screenWidth}x${screenHeight}), 比例=($selectedX, $selectedY)")
 
                 // 更新显示
                 coordinateText.text = String.format("X: %.3f  Y: %.3f", selectedX!!, selectedY!!)
 
-                // 更新十字标记位置
+                // 更新十字标记位置（使用raw坐标需要转换为视图坐标）
+                val viewLocation = IntArray(2)
+                view.getLocationOnScreen(viewLocation)
+                val viewX = rawX - viewLocation[0]
+                val viewY = rawY - viewLocation[1]
+
                 crosshairImage.visibility = View.VISIBLE
-                crosshairImage.x = x - crosshairImage.width / 2
-                crosshairImage.y = y - crosshairImage.height / 2
+                crosshairImage.x = viewX - crosshairImage.width / 2
+                crosshairImage.y = viewY - crosshairImage.height / 2
 
                 // 启用确定按钮
                 confirmButton.isEnabled = true
