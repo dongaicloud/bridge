@@ -282,42 +282,58 @@ class MainActivity : AppCompatActivity() {
         // 先保存当前配置
         saveConfig()
 
-        Toast.makeText(this, "正在测试...", Toast.LENGTH_SHORT).show()
+        val stepNames = arrayOf("", "搜索按钮", "输入法剪贴板", "联系人", "消息输入框", "发送按钮")
+        Toast.makeText(this, "开始测试步骤${step}: ${stepNames[step]}", Toast.LENGTH_SHORT).show()
 
         // 在协程中执行前置步骤并点击
         CoroutineScope(Dispatchers.Main).launch {
-            val success = executePreStepsForTest(step, service)
-            if (success) {
-                // 点击目标位置
-                val screenBounds = service.getScreenBounds()
-                val x: Int
-                val y: Int
-                when (step) {
-                    1 -> {
-                        x = (screenBounds.width() * ConfigManager.getSearchBtnX(this@MainActivity)).toInt()
-                        y = (screenBounds.height() * ConfigManager.getSearchBtnY(this@MainActivity)).toInt()
+            try {
+                val success = executePreStepsForTest(step, service)
+                if (success) {
+                    // 点击目标位置
+                    val screenBounds = service.getScreenBounds()
+                    val x: Int
+                    val y: Int
+                    when (step) {
+                        1 -> {
+                            x = (screenBounds.width() * ConfigManager.getSearchBtnX(this@MainActivity)).toInt()
+                            y = (screenBounds.height() * ConfigManager.getSearchBtnY(this@MainActivity)).toInt()
+                        }
+                        2 -> {
+                            x = (screenBounds.width() * ConfigManager.getImeClipboardX(this@MainActivity)).toInt()
+                            y = (screenBounds.height() * ConfigManager.getImeClipboardY(this@MainActivity)).toInt()
+                        }
+                        3 -> {
+                            x = (screenBounds.width() * ConfigManager.getContactX(this@MainActivity)).toInt()
+                            y = (screenBounds.height() * ConfigManager.getContactY(this@MainActivity)).toInt()
+                        }
+                        4 -> {
+                            x = (screenBounds.width() * ConfigManager.getMsgInputX(this@MainActivity)).toInt()
+                            y = (screenBounds.height() * ConfigManager.getMsgInputY(this@MainActivity)).toInt()
+                        }
+                        5 -> {
+                            x = (screenBounds.width() * ConfigManager.getSendBtnX(this@MainActivity)).toInt()
+                            y = (screenBounds.height() * ConfigManager.getSendBtnY(this@MainActivity)).toInt()
+                        }
+                        else -> return@launch
                     }
-                    2 -> {
-                        x = (screenBounds.width() * ConfigManager.getImeClipboardX(this@MainActivity)).toInt()
-                        y = (screenBounds.height() * ConfigManager.getImeClipboardY(this@MainActivity)).toInt()
+
+                    // 执行点击
+                    android.util.Log.d("Bridge", "测试点击步骤$step: 坐标($x, $y), 屏幕(${screenBounds.width()}x${screenBounds.height()})")
+                    service.clickAt(x, y)
+
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "已点击步骤${step}: ($x, $y)", Toast.LENGTH_SHORT).show()
                     }
-                    3 -> {
-                        x = (screenBounds.width() * ConfigManager.getContactX(this@MainActivity)).toInt()
-                        y = (screenBounds.height() * ConfigManager.getContactY(this@MainActivity)).toInt()
+                } else {
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "前置步骤执行失败", Toast.LENGTH_SHORT).show()
                     }
-                    4 -> {
-                        x = (screenBounds.width() * ConfigManager.getMsgInputX(this@MainActivity)).toInt()
-                        y = (screenBounds.height() * ConfigManager.getMsgInputY(this@MainActivity)).toInt()
-                    }
-                    5 -> {
-                        x = (screenBounds.width() * ConfigManager.getSendBtnX(this@MainActivity)).toInt()
-                        y = (screenBounds.height() * ConfigManager.getSendBtnY(this@MainActivity)).toInt()
-                    }
-                    else -> return@launch
                 }
-                service.clickAt(x, y)
+            } catch (e: Exception) {
+                android.util.Log.e("Bridge", "测试坐标失败", e)
                 runOnUiThread {
-                    Toast.makeText(this@MainActivity, "已点击 ($x, $y)", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "测试失败: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -491,6 +507,36 @@ class MainActivity : AppCompatActivity() {
 
     // 显示坐标选择器
     private fun showCoordinatePicker(step: Int) {
+        // 获取已有坐标
+        val currentX: Float?
+        val currentY: Float?
+        when (step) {
+            1 -> {
+                currentX = ConfigManager.getSearchBtnX(this)
+                currentY = ConfigManager.getSearchBtnY(this)
+            }
+            2 -> {
+                currentX = ConfigManager.getImeClipboardX(this)
+                currentY = ConfigManager.getImeClipboardY(this)
+            }
+            3 -> {
+                currentX = ConfigManager.getContactX(this)
+                currentY = ConfigManager.getContactY(this)
+            }
+            4 -> {
+                currentX = ConfigManager.getMsgInputX(this)
+                currentY = ConfigManager.getMsgInputY(this)
+            }
+            5 -> {
+                currentX = ConfigManager.getSendBtnX(this)
+                currentY = ConfigManager.getSendBtnY(this)
+            }
+            else -> {
+                currentX = null
+                currentY = null
+            }
+        }
+
         coordinatePicker?.dismiss()
         coordinatePicker = CoordinatePicker(
             context = this,
@@ -527,7 +573,9 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
                     Toast.makeText(this, "已取消", Toast.LENGTH_SHORT).show()
                 }
-            }
+            },
+            initialX = if (currentX != null && currentX > 0) currentX else null,
+            initialY = if (currentY != null && currentY > 0) currentY else null
         )
         coordinatePicker?.show()
     }

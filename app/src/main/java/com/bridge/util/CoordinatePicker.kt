@@ -22,14 +22,16 @@ import com.bridge.R
 class CoordinatePicker(
     private val context: Context,
     private val onCoordinatePicked: (xRatio: Float, yRatio: Float) -> Unit,
-    private val onCancelled: () -> Unit = {}
+    private val onCancelled: () -> Unit = {},
+    private val initialX: Float? = null,
+    private val initialY: Float? = null
 ) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var overlayView: View? = null
     private var isShowing = false
 
-    private var selectedX: Float? = null
-    private var selectedY: Float? = null
+    private var selectedX: Float? = initialX
+    private var selectedY: Float? = initialY
     private var screenWidth: Int = 0
     private var screenHeight: Int = 0
 
@@ -70,9 +72,40 @@ class CoordinatePicker(
         try {
             windowManager.addView(overlayView, layoutParams)
             isShowing = true
+
+            // 如果有初始坐标，显示标记
+            if (initialX != null && initialY != null) {
+                showInitialCoordinate()
+            }
         } catch (e: Exception) {
             Toast.makeText(context, "无法显示蒙层: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /**
+     * 显示初始坐标位置
+     */
+    private fun showInitialCoordinate() {
+        val view = overlayView ?: return
+        val crosshairImage = view.findViewById<ImageView>(R.id.crosshairImage)
+        val coordinateText = view.findViewById<TextView>(R.id.coordinateText)
+        val confirmButton = view.findViewById<Button>(R.id.confirmButton)
+
+        val x = initialX!! * screenWidth
+        val y = initialY!! * screenHeight
+
+        // 更新显示
+        coordinateText.text = String.format("当前: X: %.3f  Y: %.3f", initialX!!, initialY!!)
+
+        // 显示十字标记
+        crosshairImage.visibility = View.VISIBLE
+        crosshairImage.post {
+            crosshairImage.x = x - crosshairImage.width / 2
+            crosshairImage.y = y - crosshairImage.height / 2
+        }
+
+        // 启用确定按钮
+        confirmButton.isEnabled = true
     }
 
     private fun setupTouchListeners() {
