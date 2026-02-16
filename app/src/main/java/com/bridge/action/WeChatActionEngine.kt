@@ -44,7 +44,8 @@ class WeChatActionEngine {
 
         // 输入法键盘上的剪贴板区域坐标（QWE键盘上方）
         // 注意：输入法是独立APP，无法通过无障碍访问，只能用坐标点击
-        private val COORD_IME_CLIPBOARD = CoordinateRatio(0.50f, 0.75f)   // 输入法剪贴板内容区域（屏幕中间偏下）
+        // 屏幕高度2736，键盘约占底部35%，剪贴板内容在键盘上方约60%位置
+        private val COORD_IME_CLIPBOARD = CoordinateRatio(0.50f, 0.62f)   // 输入法剪贴板内容区域
     }
 
     /**
@@ -278,21 +279,8 @@ class WeChatActionEngine {
 
         Log.d(TAG, "点击输入法剪贴板区域: ($imeX, $imeY)")
 
-        // 尝试点击多个位置，覆盖不同输入法的剪贴板显示区域
-        // 通常在屏幕中间偏下的位置（QWE键盘上方）
-        val clickPositions = listOf(
-            Pair(imeX, imeY),              // 中间位置
-            Pair(imeX, imeY - 50),         // 稍高
-            Pair(imeX, imeY + 50),         // 稍低
-            Pair(imeX, imeY - 100),        // 更高
-            Pair(imeX, imeY + 100),        // 更低
-        )
-
-        for ((px, py) in clickPositions) {
-            Log.d(TAG, "尝试点击输入法位置: ($px, $py)")
-            service.clickAt(px, py)
-            delay(200)
-        }
+        // 点击剪贴板内容区域
+        service.clickAt(imeX, imeY)
 
         // 等待输入生效
         delay(500)
