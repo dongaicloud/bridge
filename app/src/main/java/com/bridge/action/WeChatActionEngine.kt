@@ -247,43 +247,68 @@ class WeChatActionEngine {
         if (!service.clickAt(x, y)) {
             return TaskResult.fail("无法点击搜索输入框")
         }
-        delay(300)
+        delay(500)
 
-        // 尝试通过无障碍节点输入拼音
-        val root = service.getRootNode()
+        // 多次尝试输入拼音
         var inputSuccess = false
+        var retryCount = 0
+        val maxRetries = 3
 
-        // 方式1: 通过焦点节点输入
-        val focusedNode = root?.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
-        if (focusedNode != null && focusedNode.isEditable) {
-            val args = android.os.Bundle()
-            args.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, pinyinInitials)
-            inputSuccess = focusedNode.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-            if (inputSuccess) {
-                Log.d(TAG, "通过焦点节点输入拼音成功: $pinyinInitials")
-            }
-        }
+        while (!inputSuccess && retryCount < maxRetries) {
+            retryCount++
+            Log.d(TAG, "尝试输入拼音 ($retryCount/$maxRetries): $pinyinInitials")
 
-        // 方式2: 通过可编辑节点输入
-        if (!inputSuccess) {
-            val editableNode = root?.let { findEditableNodeInBounds(it, COORD_SEARCH_INPUT, screenBounds) }
-            if (editableNode != null) {
-                val args = android.os.Bundle()
-                args.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, pinyinInitials)
-                inputSuccess = editableNode.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args)
-                if (inputSuccess) {
-                    Log.d(TAG, "通过可编辑节点输入拼音成功: $pinyinInitials")
+            // 重新获取根节点
+            val root = service.getRootNode()
+
+            // 方式1: 通过焦点节点输入
+            val focusedNode = root?.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
+            if (focusedNode != null) {
+                Log.d(TAG, "找到焦点节点: ${focusedNode.className}, editable=${focusedNode.isEditable}")
+                if (focusedNode.isEditable) {
+                    // 先清空
+                    focusedNode.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS)
+                    val args = android.os.Bundle()
+                    args.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, pinyinInitials)
+                    inputSuccess = focusedNode.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                    Log.d(TAG, "ACTION_SET_TEXT 结果: $inputSuccess")
                 }
             }
+
+            // 方式2: 查找输入框节点
+            if (!inputSuccess) {
+                val inputNode = root?.let { findEditableNodeInBounds(it, COORD_SEARCH_INPUT, screenBounds) }
+                if (inputNode != null) {
+                    Log.d(TAG, "找到可编辑节点: ${inputNode.className}")
+                    inputNode.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_FOCUS)
+                    val args = android.os.Bundle()
+                    args.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, pinyinInitials)
+                    inputSuccess = inputNode.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+                    Log.d(TAG, "可编辑节点输入结果: $inputSuccess")
+                }
+            }
+
+            // 验证输入结果
+            if (inputSuccess) {
+                delay(200)
+                val verifyNode = service.getRootNode()?.findFocus(android.view.accessibility.AccessibilityNodeInfo.FOCUS_INPUT)
+                val currentText = verifyNode?.text?.toString() ?: ""
+                Log.d(TAG, "验证输入框内容: '$currentText'")
+                if (currentText.contains(pinyinInitials, ignoreCase = true)) {
+                    Log.d(TAG, "拼音输入验证成功")
+                    return TaskResult.ok("已输入搜索词拼音: $pinyinInitials")
+                }
+                inputSuccess = false
+            }
+
+            if (!inputSuccess) {
+                delay(300)
+            }
         }
 
-        if (inputSuccess) {
-            return TaskResult.ok("已输入搜索词拼音: $pinyinInitials")
-        }
-
-        // 方式3: 坐标输入作为最终回退
-        Log.d(TAG, "节点输入失败，尝试坐标输入")
-        return inputByCoordinate(service, COORD_SEARCH_INPUT, pinyinInitials, "搜索输入框")
+        // 所有方式都失败，返回失败让上层处理
+        Log.w(TAG, "拼音输入失败，搜索框可能无法输入")
+        return TaskResult.fail("无法输入搜索词")
     }
 
     /**
