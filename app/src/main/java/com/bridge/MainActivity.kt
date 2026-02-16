@@ -319,7 +319,7 @@ class MainActivity : AppCompatActivity() {
 
                 if (step == 2) {
                     // 设置剪贴板并触发输入法
-                    val clipboard = getSystemService(CLIPBOARD_MANAGER_SERVICE) as android.content.ClipboardManager
+                    val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     clipboard.setPrimaryClip(android.content.ClipData.newPlainText(null, "test"))
                     Thread.sleep(500)
 
@@ -337,7 +337,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 // 后续步骤的准备工作
-                val clipboard = getSystemService(CLIPBOARD_MANAGER_SERVICE) as android.content.ClipboardManager
+                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText(null, "test"))
                 Thread.sleep(500)
 
