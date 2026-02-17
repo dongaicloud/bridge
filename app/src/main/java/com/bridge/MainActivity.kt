@@ -153,7 +153,7 @@ class MainActivity : AppCompatActivity() {
         Thread.sleep(minMs + Random.nextLong(maxMs - minMs))
     }
 
-    // 测试搜索联系人 - 使用工具链
+    // 测试搜索联系人 - 使用发送消息工具链（只执行到联系人）
     private fun testSearch() {
         val service = BridgeAccessibilityService.instance
         if (service == null) {
@@ -171,19 +171,19 @@ class MainActivity : AppCompatActivity() {
 
         Thread {
             try {
-                // 获取联系人工具的执行链
+                // 使用发送按钮的工具链
                 val allTools = ToolManager.getAllTools(this)
-                val contactTool = allTools.find { it.name == "联系人" }
+                val sendBtnTool = allTools.find { it.name == "发送按钮" }
 
-                if (contactTool == null) {
+                if (sendBtnTool == null) {
                     runOnUiThread {
-                        Toast.makeText(this, "找不到「联系人」工具，请先在工具管理中配置", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "找不到「发送按钮」工具，请先在工具管理中配置", Toast.LENGTH_SHORT).show()
                     }
                     return@Thread
                 }
 
                 // 获取完整执行链
-                val executionChain = ToolManager.getExecutionChain(this, contactTool.id)
+                val executionChain = ToolManager.getExecutionChain(this, sendBtnTool.id)
                 android.util.Log.d("Bridge", "搜索执行链: ${executionChain.map { it.name }}")
 
                 // 设置剪贴板内容为目标联系人的拼音首字母
@@ -196,8 +196,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 randomDelay(500, 1000)
 
-                // 执行工具链
+                // 执行工具链（只执行到联系人，不包括消息输入框和发送按钮）
                 for (tool in executionChain) {
+                    // 停在联系人（执行完联系人点击后停止）
+                    if (tool.name == "消息输入框") break
                     android.util.Log.d("Bridge", "执行工具: ${tool.name}")
                     executeTool(tool, service)
                 }
