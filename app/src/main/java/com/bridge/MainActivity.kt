@@ -313,6 +313,9 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
+    // 当前搜索词（用于工具链执行时保持剪贴板内容）
+    private var currentSearchText: String = ""
+
     // 执行单个工具
     private fun executeTool(tool: Tool, service: BridgeAccessibilityService) {
         when (tool.id) {
@@ -321,10 +324,7 @@ class MainActivity : AppCompatActivity() {
                 randomDelay(6000, 12000)
             }
             ToolManager.TOOL_SET_CLIPBOARD -> {
-                runOnUiThread {
-                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(null, "test"))
-                }
+                // 保持当前剪贴板内容（已由调用方设置），不做覆盖
                 randomDelay(1800, 4500)
             }
             ToolManager.TOOL_GO_BACK -> {
