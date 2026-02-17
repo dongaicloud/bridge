@@ -12,6 +12,8 @@ import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
@@ -68,11 +70,45 @@ class ScreenshotHelper(private val context: Context) {
      */
     fun initMediaProjection(resultCode: Int, data: Intent): Boolean {
         return try {
+            Log.d(TAG, "=== initMediaProjection 开始 ===")
+            Log.d(TAG, "resultCode=$resultCode (RESULT_OK=${Activity.RESULT_OK})")
+            Log.d(TAG, "data=$data")
+            Log.d(TAG, "data.extras=${data.extras}")
+
+            if (resultCode != Activity.RESULT_OK) {
+                Log.e(TAG, "Result code is not OK: $resultCode")
+                return false
+            }
+
+            if (data == null) {
+                Log.e(TAG, "Intent data is null")
+                return false
+            }
+
+            // 释放旧的 MediaProjection
+            mediaProjection?.stop()
+            mediaProjection = null
+
+            Log.d(TAG, "调用 projectionManager.getMediaProjection...")
             mediaProjection = projectionManager.getMediaProjection(resultCode, data)
-            Log.d(TAG, "MediaProjection initialized")
+
+            if (mediaProjection == null) {
+                Log.e(TAG, "getMediaProjection returned null")
+                return false
+            }
+
+            // 注册回调以检测异常
+            mediaProjection?.registerCallback(object : MediaProjection.Callback() {
+                override fun onStop() {
+                    Log.d(TAG, "MediaProjection stopped")
+                    mediaProjection = null
+                }
+            }, Handler(Looper.getMainLooper()))
+
+            Log.d(TAG, "=== MediaProjection 初始化成功 ===")
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to init MediaProjection", e)
+            Log.e(TAG, "Failed to init MediaProjection: ${e.message}", e)
             false
         }
     }
@@ -89,6 +125,7 @@ class ScreenshotHelper(private val context: Context) {
         return suspendCancellableCoroutine { continuation ->
             val projection = mediaProjection
             if (projection == null) {
+                Log.e(TAG, "capture: MediaProjection not initialized")
                 continuation.resume(ScreenshotResult(
                     success = false,
                     error = "MediaProjection not initialized"
@@ -104,6 +141,36 @@ class ScreenshotHelper(private val context: Context) {
 
                 // 创建 ImageReader
                 imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+                val reader = imageReader!!
+
+                // 使用 ImageReader 的 OnImageAvailableListener 来获取图像
+                reader.setOnImageAvailableListener({ imgReader ->
+                    try {
+                        val image = imgReader.acquireLatestImage()
+                        if (image != null) {
+                            val bitmap = imageToBitmap(image, width, height)
+                            image.close()
+
+                            // 清理
+                            virtualDisplay?.release()
+                            virtualDisplay = null
+                            imgReader.setOnImageAvailableListener(null, null)
+
+                            Log.d(TAG, "Screenshot captured successfully")
+
+                            continuation.resume(ScreenshotResult(
+                                success = true,
+                                bitmap = bitmap
+                            ))
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error processing image", e)
+                        continuation.resume(ScreenshotResult(
+                            success = false,
+                            error = "Error processing image: ${e.message}"
+                        ))
+                    }
+                }, Handler(Looper.getMainLooper()))
 
                 // 创建 VirtualDisplay
                 virtualDisplay = projection.createVirtualDisplay(
@@ -112,39 +179,56 @@ class ScreenshotHelper(private val context: Context) {
                     height,
                     density,
                     DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                    imageReader!!.surface,
-                    null,
-                    null
+                    reader.surface,
+                    object : VirtualDisplay.Callback() {
+                        override fun onPaused() {
+                            Log.d(TAG, "VirtualDisplay paused")
+                        }
+
+                        override fun onResumed() {
+                            Log.d(TAG, "VirtualDisplay resumed")
+                        }
+
+                        override fun onStopped() {
+                            Log.d(TAG, "VirtualDisplay stopped")
+                        }
+                    },
+                    Handler(Looper.getMainLooper())
                 )
 
-                // 等待一帧
-                Thread.sleep(100)
+                // 设置超时
+                Handler(Looper.getMainLooper()).postDelayed({
+                    if (continuation.isActive) {
+                        Log.w(TAG, "Screenshot timeout, trying to acquire image directly")
 
-                // 获取最新的 Image
-                val image: Image? = imageReader?.acquireLatestImage()
+                        // 尝试直接获取图像
+                        try {
+                            val image = reader.acquireLatestImage()
+                            if (image != null) {
+                                val bitmap = imageToBitmap(image, width, height)
+                                image.close()
 
-                if (image == null) {
-                    continuation.resume(ScreenshotResult(
-                        success = false,
-                        error = "Failed to acquire image"
-                    ))
-                    return@suspendCancellableCoroutine
-                }
+                                virtualDisplay?.release()
+                                virtualDisplay = null
 
-                // 转换为 Bitmap
-                val bitmap = imageToBitmap(image, width, height)
-                image.close()
-
-                // 清理
-                virtualDisplay?.release()
-                virtualDisplay = null
-
-                Log.d(TAG, "Screenshot captured successfully")
-
-                continuation.resume(ScreenshotResult(
-                    success = true,
-                    bitmap = bitmap
-                ))
+                                continuation.resume(ScreenshotResult(
+                                    success = true,
+                                    bitmap = bitmap
+                                ))
+                            } else {
+                                continuation.resume(ScreenshotResult(
+                                    success = false,
+                                    error = "Timeout: No image available"
+                                ))
+                            }
+                        } catch (e: Exception) {
+                            continuation.resume(ScreenshotResult(
+                                success = false,
+                                error = "Timeout: ${e.message}"
+                            ))
+                        }
+                    }
+                }, 3000) // 3秒超时
 
             } catch (e: Exception) {
                 Log.e(TAG, "Screenshot failed", e)

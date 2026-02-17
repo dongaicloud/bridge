@@ -518,10 +518,17 @@ class MainActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
 
+        android.util.Log.d("Bridge", "onActivityResult: requestCode=$requestCode, resultCode=$resultCode, data=$data")
+
         if (requestCode == REQUEST_CODE_SCREENSHOT) {
+            android.util.Log.d("Bridge", "REQUEST_CODE_SCREENSHOT received: resultCode=$resultCode, RESULT_OK=${Activity.RESULT_OK}, data=$data")
+
             if (resultCode == Activity.RESULT_OK && data != null) {
                 // 初始化 MediaProjection
+                android.util.Log.d("Bridge", "初始化 MediaProjection...")
                 val success = screenshotHelper?.initMediaProjection(resultCode, data) ?: false
+                android.util.Log.d("Bridge", "MediaProjection 初始化结果: $success")
+
                 if (success) {
                     Toast.makeText(this, "截图权限已获取", Toast.LENGTH_SHORT).show()
                     // 同步到 BridgeServer 的 HTTP API
@@ -532,7 +539,8 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this, "截图权限初始化失败", Toast.LENGTH_SHORT).show()
                 }
             } else {
-                Toast.makeText(this, "截图权限被拒绝", Toast.LENGTH_SHORT).show()
+                android.util.Log.w("Bridge", "截图权限被拒绝或数据为空: resultCode=$resultCode, data=$data")
+                Toast.makeText(this, "截图权限被拒绝 (resultCode=$resultCode)", Toast.LENGTH_SHORT).show()
             }
         }
     }
