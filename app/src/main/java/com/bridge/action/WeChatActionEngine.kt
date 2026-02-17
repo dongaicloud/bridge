@@ -34,6 +34,120 @@ class WeChatActionEngine {
     private suspend fun delayAfterIME() = randomDelay(4500, 9000)
     private suspend fun delayKeyboardShow() = randomDelay(3000, 6000)
 
+    // ==================== 导航方法 ====================
+
+    /**
+     * 导航到微信首页
+     * @return TaskResult 表示导航结果
+     */
+    suspend fun navigateToWeChatHome(service: BridgeAccessibilityService): TaskResult {
+        return try {
+            Log.d(TAG, "导航到微信首页...")
+
+            // 打开微信
+            if (!service.openWeChat()) {
+                return TaskResult.fail("无法打开微信")
+            }
+            delayAfterOpenApp()
+
+            // 检查是否在首页，如果不在则返回
+            var attempts = 0
+            while (!isInWeChatHome(service) && attempts < 3) {
+                service.goBack()
+                delayAfterClick()
+                attempts++
+            }
+
+            if (isInWeChatHome(service)) {
+                Log.d(TAG, "已到达微信首页")
+                TaskResult.ok("已到达微信首页")
+            } else {
+                Log.w(TAG, "无法到达微信首页")
+                TaskResult.ok("已打开微信")  // 即使不在首页也算成功
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "导航到首页失败", e)
+            TaskResult.fail("导航失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 导航到指定联系人的聊天界面
+     * @param contactName 联系人名称
+     * @return TaskResult 表示导航结果
+     */
+    suspend fun navigateToChat(
+        service: BridgeAccessibilityService,
+        contactName: String
+    ): TaskResult {
+        return try {
+            Log.d(TAG, "导航到聊天界面: $contactName")
+
+            // 获取工具
+            val allTools = ToolManager.getAllTools(service)
+            val searchBtnTool = allTools.find { it.name == "搜索按钮" }
+            val imeClipboardTool = allTools.find { it.name == "输入法剪贴板" }
+            val contactTool = allTools.find { it.name == "联系人" }
+
+            if (searchBtnTool == null || contactTool == null) {
+                return TaskResult.fail("工具未配置，请先在工具管理中配置坐标")
+            }
+
+            // 1. 打开微信
+            if (!service.openWeChat()) {
+                return TaskResult.fail("无法打开微信")
+            }
+            delayAfterOpenApp()
+
+            // 2. 设置剪贴板为联系人名称
+            setClipboard(service, contactName)
+            delayAfterInput()
+
+            // 3. 点击搜索按钮
+            if (searchBtnTool.x > 0 && searchBtnTool.y > 0) {
+                clickToolCoordinate(searchBtnTool, service)
+                delayAfterSearch()
+            } else {
+                return TaskResult.fail("搜索按钮坐标未配置")
+            }
+
+            // 4. 点击输入法剪贴板粘贴
+            if (imeClipboardTool != null && imeClipboardTool.x > 0 && imeClipboardTool.y > 0) {
+                delayKeyboardShow()  // 等待键盘弹出
+                clickToolCoordinate(imeClipboardTool, service)
+                delayAfterIME()
+            }
+
+            // 5. 点击联系人
+            if (contactTool.x > 0 && contactTool.y > 0) {
+                clickToolCoordinate(contactTool, service)
+                delayAfterClick()
+            } else {
+                return TaskResult.fail("联系人坐标未配置")
+            }
+
+            Log.d(TAG, "已进入聊天界面: $contactName")
+            TaskResult.ok("已进入聊天界面")
+        } catch (e: Exception) {
+            Log.e(TAG, "导航到聊天界面失败", e)
+            TaskResult.fail("导航失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 检查是否在微信首页
+     */
+    private fun isInWeChatHome(service: BridgeAccessibilityService): Boolean {
+        val root = service.getRootNode() ?: return false
+        // 检查是否有"微信"标题文本
+        val titleNodes = root.findAccessibilityNodeInfosByText("微信")
+        // 首页应该有底部导航栏的"微信"Tab
+        return titleNodes.any { node ->
+            val parent = node.parent
+            parent?.isClickable == true || node.isClickable
+        }
+    }
+
     /**
      * 执行发送消息任务 - 使用工具链
      */
