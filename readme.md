@@ -15,7 +15,8 @@ Bridge 是一个 Android 应用，作为 OpenClaw 的"微信操作手"，通过 
 │  │                 │                                    │
 │  │ HTTP :7788      │                                    │
 │  │ - 微信自动化    │                                    │
-│  │ - 聊天读取/发送 │                                    │
+│  │ - 工具链系统    │                                    │
+│  │ - 坐标配置      │                                    │
 │  └────────┬────────┘                                    │
 │           │                                             │
 └───────────┼─────────────────────────────────────────────┘
@@ -34,10 +35,48 @@ Bridge 是一个 Android 应用，作为 OpenClaw 的"微信操作手"，通过 
 ## 功能
 
 - HTTP API 服务（端口 7788）
+- **工具链系统** - 可配置的自动化工具链
+- **坐标配置** - 可视化坐标选取（悬浮窗蒙层）
 - 微信自动发送消息
 - 通过 AccessibilityService 实现 UI 自动化
 - 前台服务保活
 - 任务队列管理
+- 随机延迟模拟人工操作
+
+## 核心概念：工具链系统
+
+Bridge 使用**工具链**系统实现自动化操作：
+
+### 内置工具
+
+| 工具 | 功能 |
+|------|------|
+| 打开微信 | 启动微信应用 |
+| 设置剪贴板 | 将内容复制到剪贴板 |
+| 返回 | 模拟返回键 |
+
+### 默认用户工具
+
+| 工具 | 说明 | 前置工具 |
+|------|------|----------|
+| 搜索按钮 | 微信首页右上角放大镜 | 打开微信 |
+| 输入法剪贴板 | 键盘上的剪贴板位置 | 打开微信 → 搜索按钮 |
+| 联系人 | 搜索结果中的联系人 | 打开微信 → 搜索按钮 → 输入法剪贴板 |
+| 消息输入框 | 聊天界面底部输入框 | ... → 联系人 |
+| 发送按钮 | 聊天界面发送按钮 | ... → 消息输入框 → 输入法剪贴板 |
+
+### 工具链执行流程
+
+```
+执行"发送按钮"工具:
+  1. 打开微信
+  2. 点击搜索按钮
+  3. 点击输入法剪贴板 (粘贴搜索词)
+  4. 点击联系人 (进入聊天)
+  5. 点击消息输入框
+  6. 点击输入法剪贴板 (粘贴消息)
+  7. 点击发送按钮
+```
 
 ## 项目结构
 
@@ -49,14 +88,12 @@ bridge/
 │
 └── app/
     ├── build.gradle.kts          # App 模块配置
-    ├── proguard-rules.pro        # 混淆规则
     │
     └── src/main/
-        ├── AndroidManifest.xml   # 清单文件
-        │
         ├── java/com/bridge/
         │   ├── BridgeApp.kt                  # Application 入口
         │   ├── MainActivity.kt               # 主界面
+        │   ├── ToolManagerActivity.kt        # 工具管理界面
         │   ├── BridgeService.kt              # 前台服务
         │   ├── BridgeAccessibilityService.kt # 无障碍服务
         │   │
@@ -67,56 +104,63 @@ bridge/
         │   ├── http/
         │   │   └── BridgeServer.kt           # HTTP 服务器
         │   │
-        │   └── model/
-        │       └── Task.kt                   # 任务模型
+        │   ├── model/
+        │   │   └── Task.kt                   # 任务模型
+        │   │
+        │   └── util/
+        │       ├── ToolManager.kt            # 工具管理器
+        │       ├── Tool.kt                   # 工具数据类
+        │       ├── ConfigManager.kt          # 配置管理
+        │       ├── CoordinatePicker.kt       # 坐标选择器
+        │       └── PinyinUtil.kt             # 拼音工具
         │
         └── res/
-            ├── layout/activity_main.xml      # 主界面布局
-            ├── xml/accessibility_service_config.xml
-            └── values/...                    # 字符串、颜色、主题
+            └── layout/
+                ├── activity_main.xml          # 主界面
+                ├── activity_tool_manager.xml  # 工具管理
+                ├── dialog_tool_editor.xml     # 工具编辑对话框
+                └── item_tool.xml              # 工具列表项
 ```
-
-## 核心模块
-
-| 文件 | 功能 |
-|------|------|
-| `BridgeServer.kt` | HTTP API (`/ping`, `/health`, `/send_message`) |
-| `ActionDispatcher.kt` | 单线程 UI 调度（防止 ANR） |
-| `WeChatActionEngine.kt` | 微信自动化逻辑 |
-| `BridgeAccessibilityService.kt` | 无障碍服务封装 |
 
 ## 环境要求
 
-- Android Studio (推荐) 或 仅 Android SDK
+- Android Studio (推荐)
 - JDK 17+
 - Android 设备 (API 26+, 即 Android 8.0+)
-- SDK 空间: ~500 MB (最小安装)
 
 ## 构建
 
-1. 使用 Android Studio 打开项目
-2. 同步 Gradle
-3. Build → Build APK
-
-或命令行：
 ```bash
 ./gradlew assembleDebug
 ```
 
-## 安装
+## 安装与配置
 
-1. 安装 APK 到手机
-   ```bash
-   adb install app/build/outputs/apk/debug/app-debug.apk
-   ```
+### 1. 安装 APK
 
-2. 打开 Bridge 应用
+```bash
+adb install app-debug.apk
+```
 
-3. 点击"启用无障碍服务"
+### 2. 启用无障碍服务
 
-4. 在列表中找到 Bridge 并开启
+设置 → 无障碍 → Bridge → 开启
 
-5. 返回应用查看状态（应显示"无障碍服务: 已启用 ✓"）
+### 3. 授予悬浮窗权限（用于坐标选取）
+
+设置 → 应用 → Bridge → 悬浮窗 → 允许
+
+### 4. 配置工具坐标
+
+1. 打开 Bridge 应用
+2. 点击「工具管理」
+3. 对于每个工具，点击「获取」按钮
+4. 在悬浮窗蒙层上点击目标位置
+5. 点击「确定」保存坐标
+
+### 5. 测试
+
+在首页输入联系人和消息内容，点击「测试发送」验证配置。
 
 ## API 接口
 
@@ -126,7 +170,7 @@ bridge/
 
 ```bash
 curl http://127.0.0.1:7788/ping
-# {"status":"ok","version":"1.0"}
+# {"status":"ok","version":"1.0.60"}
 ```
 
 ### GET /health
@@ -135,38 +179,16 @@ curl http://127.0.0.1:7788/ping
 
 ```bash
 curl http://127.0.0.1:7788/health
-# {
-#   "status": "ok",
-#   "uptime": "5h12m",
-#   "queue_length": 0,
-#   "accessibility_enabled": true,
-#   "service_running": true
-# }
 ```
 
 ### POST /send_message
 
-发送微信消息。
+发送微信消息。使用工具链系统执行。
 
-**请求：**
 ```bash
 curl -X POST http://127.0.0.1:7788/send_message \
   -H "Content-Type: application/json" \
-  -d '{"target":"张三","message":"你好，这是测试消息"}'
-```
-
-**响应：**
-```json
-{"status":"queued","task_id":"550e8400-e29b-41d4-a716-446655440000"}
-```
-
-**错误响应：**
-```json
-// 无障碍服务未启用
-{"status":"error","error":"Accessibility service not enabled"}
-
-// 多个匹配
-{"status":"error","error":"找到多个匹配的联系人","candidates":["张三","张三丰"]}
+  -d '{"target":"张三","message":"你好"}'
 ```
 
 ### GET /task/{id}
@@ -174,134 +196,52 @@ curl -X POST http://127.0.0.1:7788/send_message \
 查询任务状态。
 
 ```bash
-curl http://127.0.0.1:7788/task/550e8400-e29b-41d4-a716-446655440000
+curl http://127.0.0.1:7788/task/{task_id}
 ```
 
-**响应：**
-```json
-// 执行中
-{"id":"...","status":"running","target":"张三"}
+## 使用说明
 
-// 成功
-{"id":"...","status":"done","target":"张三"}
+### 首页功能
 
-// 失败
-{"id":"...","status":"failed","target":"张三","error":"找不到联系人"}
-```
+- **联系人/消息输入框** - 设置默认测试联系人和消息（自动保存）
+- **测试搜索** - 搜索联系人并进入聊天界面
+- **测试发送** - 完整的发送消息流程
 
-## 架构设计
+### 工具管理
 
-### 线程模型
+- **获取** - 执行前置工具链后显示坐标选择蒙层
+- **测试** - 使用首页设置的联系人测试工具链
+- **编辑** - 修改工具名称、坐标、前置工具
+- **删除** - 删除用户自定义工具
 
-```
-Main Thread          → UI 生命周期
-HTTP Thread Pool     → 接收请求，立即返回
-BridgeActionThread   → 串行执行 UI 自动化（核心）
-```
+### 前置工具配置
 
-**核心规则：所有 UI 自动化操作必须在 BridgeActionThread 执行，禁止在 Main/IO 线程执行。**
+每个工具可以配置多个前置工具，执行时按顺序依次执行。支持拖拽排序。
 
-### 任务流程
+## 权限配置汇总
 
-```
-OpenClaw → POST /send_message
-    ↓
-Bridge HTTP Server → 验证请求 → 入队任务 → 返回 { status: queued }
-    ↓
-BridgeActionThread → 取出任务 → 执行 UI 自动化 → 标记完成
-```
-
-## 注意事项
-
-1. **需要开启无障碍服务** - 否则 API 返回错误
-2. **微信需要登录** - 操作前确保微信已登录
-3. **联系人名称精确匹配** - 建议使用微信显示的完整名称
-4. **首次使用需授权** - 在应用内启用无障碍服务
-5. **固定微信版本** - 微信 UI 变更可能导致定位失败
+| 权限 | 路径 | 重要性 |
+|------|------|--------|
+| 无障碍服务 | 设置 → 无障碍 → Bridge | 必须 |
+| 悬浮窗 | 设置 → 应用 → Bridge | 必须（坐标选取） |
+| 通知权限 | 设置 → 应用 → Bridge | 推荐 |
+| 电池优化 | 设置 → 电池 → 电池优化 → Bridge | 推荐 |
+| 自启动 | 设置 → 应用 → Bridge | 小米/OPPO等需要 |
 
 ## 调试
 
 查看日志：
 ```bash
-adb logcat | grep -E "Bridge|WeChatAction"
+adb logcat -s ToolManager:D Bridge:D WeChatAction:D
 ```
 
-## AccessibilityService 手机配置                                                                                                                                                                                                                                                                                                                                     
-  必须开启                                                                                                                                                                           
-  1. 无障碍服务                                                                                                                                                                   
-  
-  设置 → 无障碍 → Bridge → 开启
+## 注意事项
 
-  或通过代码跳转：
-  Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+1. **首次使用** - 需要逐个配置工具坐标
+2. **微信版本** - 不同版本的 UI 布局可能有差异
+3. **输入法** - 需要支持剪贴板功能的输入法
+4. **延迟设置** - 已内置随机延迟模拟人工操作（x3）
 
-  路径示例（不同手机可能略有差异）：
-  设置
-    └─ 无障碍
-         └─ 已安装的服务
-              └─ Bridge
-                   └─ 开关 [开启]
-
-  ---
-  强烈建议开启
-
-  2. 通知权限（Android 13+）
-
-  设置 → 应用 → Bridge → 通知 → 开启
-
-  用于前台服务常驻通知。
-
-  3. 电池优化白名单
-
-  设置 → 电池 → 电池优化 → 所有应用 → Bridge → 不优化
-
-  防止系统杀掉后台服务。
-
-  4. 允许后台运行（小米/OPPO/vivo 等）
-
-  设置 → 应用 → Bridge →
-    ├─ 自启动 [开启]
-    ├─ 后台弹出界面 [允许]
-    └─ 锁屏显示 [允许]
-
-  ---
-  可能需要的权限
-
-  5. 悬浮窗权限（部分场景）
-
-  设置 → 应用 → Bridge → 悬浮窗 [允许]
-
-  6. 修改系统设置（可选）
-
-  设置 → 应用 → Bridge → 修改系统设置 [允许]
-
-  ---
-  配置汇总
-  ┌────────────┬─────────────────────────────────┬─────────────────┐
-  │    权限    │              路径               │     重要性      │
-  ├────────────┼─────────────────────────────────┼─────────────────┤
-  │ 无障碍服务 │ 设置 → 无障碍 → Bridge          │ 必须            │
-  ├────────────┼─────────────────────────────────┼─────────────────┤
-  │ 通知权限   │ 设置 → 应用 → Bridge → 通知     │ 强烈建议        │
-  ├────────────┼─────────────────────────────────┼─────────────────┤
-  │ 电池优化   │ 设置 → 电池 → 电池优化 → Bridge │ 强烈建议        │
-  ├────────────┼─────────────────────────────────┼─────────────────┤
-  │ 自启动     │ 设置 → 应用 → Bridge            │ 小米/OPPO等需要 │
-  ├────────────┼─────────────────────────────────┼─────────────────┤
-  │ 悬浮窗     │ 设置 → 应用 → Bridge            │ 可选            │
-  └────────────┴─────────────────────────────────┴─────────────────┘
-  ---
-  首次使用流程
-
-  1. 安装 Bridge APK
-  2. 打开 Bridge 应用
-  3. 点击"启用无障碍服务"
-  4. 系统跳转到设置页面
-  5. 找到 Bridge 并开启
-  6. 返回 Bridge 应用
-  7. 状态显示"无障碍服务: 已启用 ✓"
-  8. 测试: curl http://127.0.0.1:7788/ping
-  
 ## 许可证
 
 MIT
