@@ -22,6 +22,11 @@ import kotlin.random.Random
 
 class ToolManagerActivity : AppCompatActivity() {
 
+    companion object {
+        private const val REQUEST_CODE_EXPORT = 2001
+        private const val REQUEST_CODE_IMPORT = 2002
+    }
+
     private lateinit var toolsRecyclerView: RecyclerView
     private lateinit var toolAdapter: ToolAdapter
     private var tools: MutableList<Tool> = mutableListOf()
@@ -552,63 +557,102 @@ class ToolManagerActivity : AppCompatActivity() {
     }
 
     /**
-     * 导出配置
+     * 导出配置 - 使用 SAF
      */
     private fun exportConfig() {
-        // 检查存储权限（Android 10+ 不需要）
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            if (checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
-                android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), 100)
-                Toast.makeText(this, "请授予存储权限", Toast.LENGTH_SHORT).show()
-                return
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+            putExtra(Intent.EXTRA_TITLE, "bridge_tools_config.json")
+        }
+        startActivityForResult(intent, REQUEST_CODE_EXPORT)
+    }
+
+    /**
+     * 导入配置 - 使用 SAF
+     */
+    private fun importConfig() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+        }
+        startActivityForResult(intent, REQUEST_CODE_IMPORT)
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        when (requestCode) {
+            REQUEST_CODE_EXPORT -> {
+                if (resultCode == RESULT_OK && data?.data != null) {
+                    exportToUri(data.data!!)
+                }
+            }
+            REQUEST_CODE_IMPORT -> {
+                if (resultCode == RESULT_OK && data?.data != null) {
+                    importFromUri(data.data!!)
+                }
             }
         }
+    }
 
+    /**
+     * 导出到指定 URI
+     */
+    private fun exportToUri(uri: android.net.Uri) {
         Thread {
-            val filePath = ToolManager.exportTools(this)
-            runOnUiThread {
-                if (filePath != null) {
-                    Toast.makeText(this, "配置已导出到:\n$filePath", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(this, "导出失败", Toast.LENGTH_SHORT).show()
+            try {
+                val tools = ToolManager.getUserTools(this)
+                val jsonArray = org.json.JSONArray()
+                tools.forEach { jsonArray.put(it.toJson()) }
+
+                contentResolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(jsonArray.toString(2).toByteArray(Charsets.UTF_8))
+                }
+
+                runOnUiThread {
+                    Toast.makeText(this, "配置已导出", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ToolManager", "导出失败", e)
+                runOnUiThread {
+                    Toast.makeText(this, "导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }.start()
     }
 
     /**
-     * 导入配置
+     * 从指定 URI 导入
      */
-    private fun importConfig() {
-        // 检查存储权限（Android 10+ 不需要）
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            if (checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) !=
-                android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE), 101)
-                Toast.makeText(this, "请授予存储权限", Toast.LENGTH_SHORT).show()
-                return
-            }
-        }
-
-        // 检查导入文件是否存在
-        if (!ToolManager.hasImportFile()) {
-            Toast.makeText(this, "导入文件不存在:\n${ToolManager.getImportFilePath()}", Toast.LENGTH_LONG).show()
-            return
-        }
-
+    private fun importFromUri(uri: android.net.Uri) {
         AlertDialog.Builder(this)
             .setTitle("导入配置")
             .setMessage("确定要导入配置吗？\n当前配置将被覆盖。")
             .setPositiveButton("导入") { _, _ ->
                 Thread {
-                    val success = ToolManager.importTools(this)
-                    runOnUiThread {
-                        if (success) {
+                    try {
+                        val jsonStr = contentResolver.openInputStream(uri)?.use { inputStream ->
+                            inputStream.bufferedReader().readText()
+                        } ?: throw Exception("无法读取文件")
+
+                        val jsonArray = org.json.JSONArray(jsonStr)
+                        val tools = mutableListOf<Tool>()
+
+                        for (i in 0 until jsonArray.length()) {
+                            tools.add(Tool.fromJson(jsonArray.getJSONObject(i)))
+                        }
+
+                        ToolManager.saveUserTools(this, tools)
+
+                        runOnUiThread {
                             loadTools()
-                            Toast.makeText(this, "配置导入成功", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(this, "导入失败，请检查文件格式", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, "成功导入 ${tools.size} 个工具配置", Toast.LENGTH_SHORT).show()
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("ToolManager", "导入失败", e)
+                        runOnUiThread {
+                            Toast.makeText(this, "导入失败: ${e.message}", Toast.LENGTH_SHORT).show()
                         }
                     }
                 }.start()

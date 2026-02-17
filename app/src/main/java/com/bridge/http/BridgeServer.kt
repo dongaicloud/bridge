@@ -1,5 +1,6 @@
 package com.bridge.http
 
+import android.graphics.Bitmap
 import android.util.Log
 import com.bridge.BridgeAccessibilityService
 import com.bridge.BridgeService
@@ -9,10 +10,14 @@ import com.bridge.cache.MoxinDataCache
 import com.bridge.model.Task
 import com.bridge.model.TaskResult
 import com.bridge.model.TaskStatus
+import com.bridge.ocr.OcrService
+import com.bridge.ocr.ScrollingOcrReader
+import com.bridge.ocr.ScreenshotHelper
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import fi.iki.elonen.NanoHTTPD
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -46,6 +51,8 @@ class BridgeServer(port: Int) : NanoHTTPD(port) {
                 uri == "/chat_history" && method == Method.GET -> handleChatHistory(session)
                 uri.startsWith("/task/") && method == Method.GET -> handleTaskStatus(uri)
                 uri.startsWith("/debug/ui_tree") && method == Method.GET -> handleDebugUITree(session)
+                uri == "/debug/ocr" && method == Method.GET -> handleOcrTest(session)
+                uri == "/debug/screenshot_init" && method == Method.GET -> handleScreenshotInit(session)
                 else -> json(Response.Status.NOT_FOUND, mapOf("error" to "Not Found"))
             }
         } catch (e: Exception) {
@@ -149,11 +156,14 @@ class BridgeServer(port: Int) : NanoHTTPD(port) {
 
     /**
      * GET /chat_list - 获取联系人列表
-     * 参数: refresh=true 强制刷新缓存
+     * 参数:
+     *   refresh=true 强制刷新缓存
+     *   use_ocr=true 使用OCR方式读取（推荐，支持滚动）
      */
     private fun handleChatList(session: IHTTPSession): Response {
         val params = session.parms
         val refresh = params["refresh"]?.toBoolean() ?: false
+        val useOcr = params["use_ocr"]?.toBoolean() ?: true  // 默认使用OCR
 
         val service = BridgeAccessibilityService.instance
         if (service == null) {
@@ -184,7 +194,15 @@ class BridgeServer(port: Int) : NanoHTTPD(port) {
             }
         }
 
-        // 使用同步方式执行读取（在 ActionDispatcher 线程）
+        // OCR 方式（支持滚动读取完整列表）
+        if (useOcr) {
+            return executeOcrReadWithCache(
+                service = service,
+                cacheSetter = { MoxinDataCache.setContacts(it) }
+            )
+        }
+
+        // 传统 AccessibilityService 方式（不支持滚动）
         return executeReadWithCache(
             service = service,
             cacheSetter = { MoxinDataCache.setContacts(it) },
@@ -391,6 +409,91 @@ class BridgeServer(port: Int) : NanoHTTPD(port) {
     }
 
     /**
+     * 使用 OCR 方式读取联系人列表（支持滚动）
+     */
+    private fun executeOcrReadWithCache(
+        service: BridgeAccessibilityService,
+        cacheSetter: (List<com.bridge.model.ContactData>) -> Unit
+    ): Response {
+        // 检查截图权限
+        if (screenshotHelper?.isInitialized() != true) {
+            return json(Response.Status.SERVICE_UNAVAILABLE, mapOf(
+                "status" to "error",
+                "error" to "截图权限未初始化",
+                "hint" to "请在 Bridge APP 中点击 OCR 测试按钮授权截图权限，或调用 /debug/screenshot_init"
+            ))
+        }
+
+        // 使用同步方式执行
+        var result: com.bridge.model.ReadResult? = null
+        val latch = java.util.concurrent.CountDownLatch(1)
+
+        CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                // 1. 导航到通讯录
+                val navResult = withContext(ActionDispatcher.dispatcher) {
+                    val actionEngine = MoxinActionEngine()
+                    actionEngine.navigateToContacts(service)
+                }
+
+                if (!navResult.success) {
+                    result = com.bridge.model.ReadResult.error(navResult.error ?: "导航到通讯录失败")
+                    latch.countDown()
+                    return@launch
+                }
+
+                // 2. 使用滚动 OCR 读取联系人
+                val reader = ScrollingOcrReader(
+                    context = BridgeService.instance ?: service.applicationContext,
+                    screenshotHelper = screenshotHelper!!
+                )
+                result = reader.readContactsScrolling(service)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "OCR 读取失败", e)
+                result = com.bridge.model.ReadResult.error("OCR 读取异常: ${e.message}")
+            } finally {
+                latch.countDown()
+            }
+        }
+
+        // 等待完成（最多2分钟）
+        if (!latch.await(120, java.util.concurrent.TimeUnit.SECONDS)) {
+            return json(Response.Status.INTERNAL_ERROR, mapOf(
+                "status" to "error",
+                "error" to "OCR 读取超时"
+            ))
+        }
+
+        val readResult = result!!
+        return if (readResult.success && readResult.contacts != null) {
+            // 更新缓存
+            cacheSetter(readResult.contacts!!)
+
+            json(Response.Status.OK, mapOf(
+                "status" to "ok",
+                "source" to "ocr",
+                "method" to "scrolling_ocr",
+                "total" to readResult.totalCount,
+                "contacts" to readResult.contacts!!.map { contact ->
+                    mapOf(
+                        "name" to contact.name,
+                        "display_name" to (contact.displayName ?: contact.name),
+                        "last_message" to (contact.lastMessage ?: ""),
+                        "last_time" to (contact.lastTime ?: 0),
+                        "unread_count" to contact.unreadCount
+                    )
+                }
+            ))
+        } else {
+            json(Response.Status.INTERNAL_ERROR, mapOf(
+                "status" to "error",
+                "error" to (readResult.error ?: "读取失败")
+            ))
+        }
+    }
+
+    /**
      * 异步执行任务
      */
     private fun executeTaskAsync(task: Task) {
@@ -507,6 +610,155 @@ class BridgeServer(port: Int) : NanoHTTPD(port) {
                 "error" to (e.message ?: "Failed to dump UI tree")
             ))
         }
+    }
+
+    // 截图权限相关
+    private var screenshotHelper: ScreenshotHelper? = null
+    private var pendingScreenshotResult: ((Boolean) -> Unit)? = null
+    private var screenshotResultCode: Int = 0
+    private var screenshotData: android.content.Intent? = null
+
+    /**
+     * 设置截图权限结果（由 MainActivity 调用）
+     */
+    fun setScreenshotResult(resultCode: Int, data: android.content.Intent?) {
+        Log.d(TAG, "setScreenshotResult: resultCode=$resultCode")
+        screenshotResultCode = resultCode
+        screenshotData = data
+
+        // 初始化 ScreenshotHelper
+        if (screenshotHelper == null) {
+            screenshotHelper = ScreenshotHelper(BridgeService.instance ?: return)
+        }
+
+        val success = screenshotHelper?.initMediaProjection(resultCode, data) ?: false
+        pendingScreenshotResult?.invoke(success)
+        pendingScreenshotResult = null
+    }
+
+    /**
+     * GET /debug/screenshot_init - 初始化截图权限
+     * 这个端点需要配合前端使用，实际授权需要通过 UI
+     * 返回当前截图权限状态
+     */
+    private fun handleScreenshotInit(session: IHTTPSession): Response {
+        val initialized = screenshotHelper?.isInitialized() ?: false
+        return json(Response.Status.OK, mapOf(
+            "status" to "ok",
+            "screenshot_initialized" to initialized,
+            "message" to if (initialized) "截图权限已初始化" else "截图权限未初始化，请在 Bridge APP 中点击 OCR 测试按钮授权"
+        ))
+    }
+
+    /**
+     * GET /debug/ocr - OCR 测试
+     * 参数:
+     *   - save_image: 可选，保存截图到文件 (true/false)
+     *
+     * 需要:
+     *   1. 先在 Bridge APP 中授权截图权限
+     *   2. 或者通过 /debug/screenshot_init 初始化
+     */
+    private fun handleOcrTest(session: IHTTPSession): Response {
+        // 检查截图权限
+        if (screenshotHelper?.isInitialized() != true) {
+            return json(Response.Status.SERVICE_UNAVAILABLE, mapOf(
+                "status" to "error",
+                "error" to "截图权限未初始化",
+                "hint" to "请在 Bridge APP 中点击 OCR 测试按钮授权截图权限"
+            ))
+        }
+
+        // 同步执行截图和 OCR
+        var resultBitmap: Bitmap? = null
+        var ocrResult: OcrService.OcrResult? = null
+        var error: String? = null
+
+        val latch = java.util.concurrent.CountDownLatch(1)
+
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                // 截图
+                val screenshotResult = withContext(Dispatchers.IO) {
+                    screenshotHelper?.capture()
+                }
+
+                if (screenshotResult == null || !screenshotResult.success) {
+                    error = screenshotResult?.error ?: "截图失败"
+                    latch.countDown()
+                    return@launch
+                }
+
+                resultBitmap = screenshotResult.bitmap
+
+                // OCR 识别
+                if (resultBitmap != null) {
+                    ocrResult = withContext(Dispatchers.IO) {
+                        OcrService.recognize(resultBitmap!!)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "OCR test failed", e)
+                error = e.message ?: "OCR 测试异常"
+            } finally {
+                latch.countDown()
+            }
+        }
+
+        // 等待完成（最多 10 秒）
+        if (!latch.await(10, java.util.concurrent.TimeUnit.SECONDS)) {
+            return json(Response.Status.INTERNAL_ERROR, mapOf(
+                "status" to "error",
+                "error" to "OCR 测试超时"
+            ))
+        }
+
+        if (error != null) {
+            return json(Response.Status.INTERNAL_ERROR, mapOf(
+                "status" to "error",
+                "error" to error
+            ))
+        }
+
+        if (ocrResult == null) {
+            return json(Response.Status.INTERNAL_ERROR, mapOf(
+                "status" to "error",
+                "error" to "OCR 结果为空"
+            ))
+        }
+
+        // 构建返回结果
+        val textBlocks = ocrResult!!.textBlocks.map { block ->
+            mapOf(
+                "text" to block.text,
+                "bounds" to mapOf(
+                    "left" to block.bounds.left,
+                    "top" to block.bounds.top,
+                    "right" to block.bounds.right,
+                    "bottom" to block.bounds.bottom
+                ),
+                "lines" to block.lines.map { line ->
+                    mapOf(
+                        "text" to line.text,
+                        "bounds" to mapOf(
+                            "left" to line.bounds.left,
+                            "top" to line.bounds.top,
+                            "right" to line.bounds.right,
+                            "bottom" to line.bounds.bottom
+                        )
+                    )
+                }
+            )
+        }
+
+        return json(Response.Status.OK, mapOf(
+            "status" to "ok",
+            "success" to ocrResult!!.success,
+            "processing_time_ms" to ocrResult!!.processingTimeMs,
+            "block_count" to ocrResult!!.textBlocks.size,
+            "full_text" to ocrResult!!.fullText,
+            "text_blocks" to textBlocks
+        ))
     }
 
     /**

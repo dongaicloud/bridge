@@ -56,12 +56,13 @@ object ToolManager {
     private const val PREF_NAME = "bridge_tools"
     private const val KEY_TOOLS = "tools"
     private const val KEY_VERSION = "tools_version"
-    private const val CURRENT_VERSION = 3  // 更新版本号以强制重置工具配置
+    private const val CURRENT_VERSION = 4  // 更新版本号以强制重置工具配置（v4: 添加通讯录工具）
 
     // 内置工具ID
     const val TOOL_OPEN_MOXIN = "builtin_open_moxin"
     const val TOOL_SET_CLIPBOARD = "builtin_set_clipboard"
     const val TOOL_GO_BACK = "builtin_go_back"
+    const val TOOL_CONTACTS_TAB = "tool_contacts_tab"  // 通讯录标签
 
     // 获取默认内置工具
     private fun getBuiltInTools(): List<Tool> {
@@ -108,7 +109,7 @@ object ToolManager {
     /**
      * 获取用户自定义工具
      */
-    private fun getUserTools(context: Context): List<Tool> {
+    fun getUserTools(context: Context): List<Tool> {
         val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         val toolsJson = prefs.getString(KEY_TOOLS, "[]") ?: "[]"
         val tools = mutableListOf<Tool>()
@@ -228,6 +229,14 @@ object ToolManager {
                     description = "某信首页右上角放大镜",
                     x = 0.845f,
                     y = 0.075f,
+                    preToolIds = listOf(TOOL_OPEN_MOXIN)
+                ),
+                Tool(
+                    id = "tool_contacts_tab",
+                    name = "通讯录",
+                    description = "某信底部通讯录标签（第二个）",
+                    x = 0.25f,
+                    y = 0.97f,
                     preToolIds = listOf(TOOL_OPEN_MOXIN)
                 ),
                 Tool(

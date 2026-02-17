@@ -45,37 +45,59 @@
             android:padding="12dp"
             android:layout_marginTop="12dp"/>
 
-        <!-- 服务按钮 -->
-        <Button
-            android:id="@+id/accessibilityBtn"
+        <!-- 服务按钮 - 两列布局 -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="启用无障碍服务"
-            android:layout_marginTop="8dp"/>
+            android:orientation="horizontal"
+            android:layout_marginTop="8dp">
 
-        <Button
-            android:id="@+id/testPingBtn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="测试 HTTP 服务"
-            android:backgroundTint="#4CAF50"
-            android:layout_marginTop="4dp"/>
+            <Button
+                android:id="@+id/accessibilityBtn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="启用无障碍"
+                android:textSize="12sp"
+                android:layout_marginEnd="4dp"/>
 
-        <Button
-            android:id="@+id/toolManagerBtn"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="工具管理"
-            android:backgroundTint="#9C27B0"
-            android:layout_marginTop="4dp"/>
+            <Button
+                android:id="@+id/testPingBtn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="测试HTTP服务"
+                android:textSize="12sp"
+                android:backgroundTint="#4CAF50"
+                android:layout_marginStart="4dp"/>
+        </LinearLayout>
 
-        <Button
-            android:id="@+id/ocrTestBtn"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="OCR 测试"
-            android:backgroundTint="#00BCD4"
-            android:layout_marginTop="4dp"/>
+            android:orientation="horizontal"
+            android:layout_marginTop="4dp">
+
+            <Button
+                android:id="@+id/toolManagerBtn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="工具管理"
+                android:textSize="12sp"
+                android:backgroundTint="#9C27B0"
+                android:layout_marginEnd="4dp"/>
+
+            <Button
+                android:id="@+id/ocrTestBtn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="OCR测试"
+                android:textSize="12sp"
+                android:backgroundTint="#00BCD4"
+                android:layout_marginStart="4dp"/>
+        </LinearLayout>
 
         <!-- OCR 结果显示 -->
         <TextView

@@ -37,6 +37,45 @@ class MoxinActionEngine {
     // ==================== 导航方法 ====================
 
     /**
+     * 导航到某信通讯录界面
+     * @return TaskResult 表示导航结果
+     */
+    suspend fun navigateToContacts(service: BridgeAccessibilityService): TaskResult {
+        return try {
+            Log.d(TAG, "导航到通讯录界面...")
+
+            // 先导航到首页
+            val homeResult = navigateToMoxinHome(service)
+            if (!homeResult.success) {
+                return homeResult
+            }
+
+            // 获取通讯录工具
+            val allTools = ToolManager.getAllTools(service)
+            val contactsTabTool = allTools.find { it.name == "通讯录" }
+
+            if (contactsTabTool == null || contactsTabTool.x <= 0 || contactsTabTool.y <= 0) {
+                Log.w(TAG, "通讯录工具未配置，尝试使用默认位置")
+                // 使用默认位置（底部导航栏第二个）
+                val screenBounds = service.getScreenBounds()
+                val defaultX = (screenBounds.width() * 0.25).toInt()
+                val defaultY = (screenBounds.height() * 0.97).toInt()
+                service.clickAt(defaultX, defaultY)
+            } else {
+                clickToolCoordinate(contactsTabTool, service)
+            }
+
+            delayAfterClick()
+
+            Log.d(TAG, "已到达通讯录界面")
+            TaskResult.ok("已进入通讯录")
+        } catch (e: Exception) {
+            Log.e(TAG, "导航到通讯录失败", e)
+            TaskResult.fail("导航失败: ${e.message}")
+        }
+    }
+
+    /**
      * 导航到某信首页
      * @return TaskResult 表示导航结果
      */

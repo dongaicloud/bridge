@@ -17,13 +17,18 @@ class BridgeService : Service() {
 
         var isRunning = false
             private set
+
+        var instance: BridgeService? = null
+            private set
     }
 
-    private var server: BridgeServer? = null
+    var bridgeServer: BridgeServer? = null
+        private set
 
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "BridgeService onCreate")
+        instance = this
         startForeground(NOTIFICATION_ID, createNotification())
         startHttpServer()
         isRunning = true
@@ -41,6 +46,7 @@ class BridgeService : Service() {
         Log.d(TAG, "BridgeService onDestroy")
         stopHttpServer()
         isRunning = false
+        instance = null
     }
 
     private fun createNotification(): Notification {
@@ -62,8 +68,8 @@ class BridgeService : Service() {
 
     private fun startHttpServer() {
         try {
-            server = BridgeServer(BridgeApp.HTTP_PORT)
-            server?.start()
+            bridgeServer = BridgeServer(BridgeApp.HTTP_PORT)
+            bridgeServer?.start()
             Log.d(TAG, "HTTP Server started on port ${BridgeApp.HTTP_PORT}")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start HTTP Server", e)
@@ -71,8 +77,8 @@ class BridgeService : Service() {
     }
 
     private fun stopHttpServer() {
-        server?.stop()
-        server = null
+        bridgeServer?.stop()
+        bridgeServer = null
         Log.d(TAG, "HTTP Server stopped")
     }
 }

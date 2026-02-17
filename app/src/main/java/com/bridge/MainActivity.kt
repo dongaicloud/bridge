@@ -524,6 +524,8 @@ class MainActivity : AppCompatActivity() {
                 val success = screenshotHelper?.initMediaProjection(resultCode, data) ?: false
                 if (success) {
                     Toast.makeText(this, "截图权限已获取", Toast.LENGTH_SHORT).show()
+                    // 同步到 BridgeServer 的 HTTP API
+                    BridgeService.instance?.bridgeServer?.setScreenshotResult(resultCode, data)
                     // 执行 OCR 测试
                     executeOcrTest()
                 } else {
