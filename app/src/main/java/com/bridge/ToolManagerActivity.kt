@@ -145,8 +145,7 @@ class ToolManagerActivity : AppCompatActivity() {
                 randomDelay(6000, 12000)
             }
             ToolManager.TOOL_SET_CLIPBOARD -> {
-                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText(null, "test"))
+                // 剪贴板内容由调用方设置，这里不覆盖
                 randomDelay(1800, 4500)
             }
             ToolManager.TOOL_GO_BACK -> {
@@ -196,8 +195,7 @@ class ToolManagerActivity : AppCompatActivity() {
                             randomDelay(6000, 12000)
                         }
                         ToolManager.TOOL_SET_CLIPBOARD -> {
-                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                            clipboard.setPrimaryClip(android.content.ClipData.newPlainText(null, "test"))
+                            // 剪贴板内容由调用方设置，这里不覆盖
                             randomDelay(1800, 4500)
                         }
                         ToolManager.TOOL_GO_BACK -> {
