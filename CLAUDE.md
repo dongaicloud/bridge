@@ -135,18 +135,27 @@ git push
 - `LICENSE` - 许可证文件
 - `.gitignore` - Git 忽略规则
 
-### 代码更新 (触发完整流程)
+### 代码更新 (触发完整流程 - 全自动)
 
-当修改**代码文件**时，执行完整流程：
+当修改**代码文件**时，**Claude 必须自动执行完整流程**：
 
 ```bash
-# 提交代码
+# 步骤 1: 提交代码
 git add -A
 git commit -m "feat: 新功能"
 git push
 
-# 等待构建 → 下载 → 安装 → 监控
+# 步骤 2: 自动轮询等待构建完成 (Claude 自动执行)
+gh run watch --exit-status
+
+# 步骤 3: 自动下载安装 (Claude 自动执行)
+bash auto_deploy.sh
+
+# 步骤 4: 自动监控日志 (Claude 自动执行)
+bash auto_deploy.sh logs
 ```
+
+**重要：Claude 在 git push 后必须自动执行步骤 2-4，无需用户任何提示！**
 
 **需要触发构建的文件类型：**
 - `*.kt`, `*.java` - Kotlin/Java 代码
@@ -163,9 +172,13 @@ git commit -m "feat: 描述本次更新的内容"
 git push origin phase1-foundation
 ```
 
-### 2. 等待 GitHub Actions 构建 (~2-3 分钟)
-- 查看构建状态: https://github.com/dongaicloud/bridge/actions
+### 2. 自动等待 GitHub Actions 构建 (Claude 自动执行)
+```bash
+# 自动轮询构建状态，直到完成
+gh run watch --exit-status
+```
 - 构建完成后会自动创建 Release
+- **Claude 必须在 push 后自动执行此命令，无需用户提示**
 
 ### 3. 下载 APK
 ```bash
@@ -206,17 +219,51 @@ bash auto_deploy.sh logs
 - 修复问题描述
 ```
 
-### 一键完整更新流程
+### 一键完整更新流程 (全自动)
+
+**重要：提交代码后，Claude 必须自动执行以下完整流程，无需用户手动提示：**
+
 ```bash
 # 1. 提交代码
 git add -A && git commit -m "feat: 新功能描述" && git push
 
-# 2. 等待构建完成后，执行自动部署
+# 2. 自动轮询等待构建完成 (Claude 必须自动执行)
+# 每隔 15 秒查询一次构建状态，最多等待 10 分钟
+gh run watch --exit-status || gh run list --limit 1 --json status,conclusion
+
+# 3. 构建完成后，自动下载安装 (Claude 必须自动执行)
 bash auto_deploy.sh
 
-# 3. 监控运行日志
+# 4. 自动监控运行日志 (Claude 必须自动执行)
 bash auto_deploy.sh logs
 ```
+
+**自动化流程说明：**
+
+| 步骤 | 命令 | 说明 |
+|------|------|------|
+| 1 | `git push` | 提交代码后立即开始 |
+| 2 | `gh run watch` | 自动轮询构建状态，直到完成 |
+| 3 | `auto_deploy.sh` | 构建成功后自动下载安装 |
+| 4 | `auto_deploy.sh logs` | 自动启动日志监控 |
+
+**构建状态查询命令：**
+```bash
+# 实时监控当前构建 (推荐)
+gh run watch --exit-status
+
+# 查看最近构建列表
+gh run list --limit 5
+
+# 查看特定构建详情
+gh run view <run-id>
+```
+
+**Claude 行为规则：**
+- 提交代码后，**立即**执行 `gh run watch` 等待构建
+- 构建成功后，**立即**执行 `auto_deploy.sh` 下载安装
+- 安装完成后，**立即**执行 `auto_deploy.sh logs` 监控日志
+- **全程自动化**，不需要用户任何手动提示
 
 ---
 
@@ -357,9 +404,9 @@ Bridge APP includes a coordinate calibration system for device-specific touch po
    bash auto_deploy.sh test  # 测试 API
    ```
 
-### Claude 代码修改后自动流程
+### Claude 代码修改后自动流程 (强制执行)
 
-当 Claude 修改代码后，应自动执行：
+**重要：当 Claude 修改代码后，必须自动执行以下完整流程，无需用户任何提示或确认：**
 
 ```bash
 # 1. 提交代码
@@ -367,14 +414,21 @@ git add -A
 git commit -m "描述修改内容"
 git push
 
-# 2. 等待构建 (~3分钟)
+# 2. 自动轮询等待构建完成 (必须自动执行，不需要用户提示)
+gh run watch --exit-status
 
-# 3. 下载安装
+# 3. 构建成功后自动下载安装 (必须自动执行，不需要用户提示)
 bash auto_deploy.sh
 
-# 4. 监控日志
+# 4. 自动监控日志 (必须自动执行，不需要用户提示)
 bash auto_deploy.sh logs
 ```
+
+**关键规则：**
+- `git push` 后，Claude **必须立即**执行 `gh run watch` 轮询构建状态
+- 构建完成后，Claude **必须立即**执行 `auto_deploy.sh` 下载安装
+- **禁止**等待用户提示"构建完成了吗"或"可以安装了吗"
+- **禁止**在流程中间停止等待用户输入
 
 ### 检查清单
 
