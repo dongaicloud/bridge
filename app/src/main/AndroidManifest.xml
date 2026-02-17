@@ -75,9 +75,9 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- 截图服务 (MediaProjection 要求的前台服务) -->
+        <!-- MediaProjection 服务 (MediaProjection 要求的前台服务) -->
         <service
-            android:name=".ocr.ScreenshotService"
+            android:name=".ocr.MediaProjectionService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />

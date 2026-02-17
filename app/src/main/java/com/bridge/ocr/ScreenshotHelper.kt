@@ -86,8 +86,8 @@ class ScreenshotHelper(private val context: Context) {
             }
 
             // Android 10+ 需要先启动 mediaProjection 类型的前台服务
-            Log.d(TAG, "启动 ScreenshotService...")
-            ScreenshotService.start(context)
+            Log.d(TAG, "启动 MediaProjectionService...")
+            MediaProjectionService.start(context)
 
             // 等待服务启动
             Thread.sleep(500)
@@ -101,7 +101,7 @@ class ScreenshotHelper(private val context: Context) {
 
             if (mediaProjection == null) {
                 Log.e(TAG, "getMediaProjection returned null")
-                ScreenshotService.stop(context)
+                MediaProjectionService.stop(context)
                 return false
             }
 
@@ -111,7 +111,7 @@ class ScreenshotHelper(private val context: Context) {
                     Log.d(TAG, "MediaProjection stopped")
                     mediaProjection = null
                     // 停止截图服务
-                    ScreenshotService.stop(context)
+                    MediaProjectionService.stop(context)
                 }
             }, Handler(Looper.getMainLooper()))
 
@@ -119,7 +119,7 @@ class ScreenshotHelper(private val context: Context) {
             true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to init MediaProjection: ${e.message}", e)
-            ScreenshotService.stop(context)
+            MediaProjectionService.stop(context)
             false
         }
     }
@@ -287,7 +287,7 @@ class ScreenshotHelper(private val context: Context) {
         mediaProjection?.stop()
         mediaProjection = null
         // 停止截图服务
-        ScreenshotService.stop(context)
+        MediaProjectionService.stop(context)
         Log.d(TAG, "ScreenshotHelper released")
     }
 }
