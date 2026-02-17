@@ -86,12 +86,24 @@ class ToolManagerActivity : AppCompatActivity() {
 
         Toast.makeText(this, "正在执行前置步骤...", Toast.LENGTH_SHORT).show()
 
+        // 获取默认联系人设置剪贴板
+        val defaultContact = getDefaultContact()
+        val pinyinInitials = com.bridge.util.PinyinUtil.toPinyinInitials(defaultContact)
+        android.util.Log.d("ToolManager", "设置剪贴板: $pinyinInitials (联系人: $defaultContact)")
+        runOnUiThread {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            clipboard.setPrimaryClip(android.content.ClipData.newPlainText(null, pinyinInitials))
+        }
+
         // 在后台线程执行前置工具链
         Thread {
             try {
-                // 获取前置工具链（不包含当前工具本身）
-                val allTools = ToolManager.getAllTools(this)
-                val preTools = tool.preToolIds.mapNotNull { id -> allTools.find { it.id == id } }
+                // 获取完整执行链（不包含当前工具本身）
+                val executionChain = ToolManager.getExecutionChain(this, tool.id)
+                // 排除当前工具
+                val preTools = executionChain.filter { it.id != tool.id }
+
+                android.util.Log.d("ToolManager", "前置工具链: ${preTools.map { it.name }}")
 
                 for (t in preTools) {
                     android.util.Log.d("ToolManager", "执行前置工具: ${t.name}")
@@ -109,6 +121,18 @@ class ToolManagerActivity : AppCompatActivity() {
                 }
             }
         }.start()
+    }
+
+    // 获取默认联系人
+    private fun getDefaultContact(): String {
+        val prefs = getSharedPreferences("bridge_settings", MODE_PRIVATE)
+        return prefs.getString("default_contact", "1810835") ?: "1810835"
+    }
+
+    // 获取默认消息
+    private fun getDefaultMessage(): String {
+        val prefs = getSharedPreferences("bridge_settings", MODE_PRIVATE)
+        return prefs.getString("default_message", "test") ?: "test"
     }
 
     private fun showCoordinatePicker(tool: Tool) {
@@ -181,10 +205,24 @@ class ToolManagerActivity : AppCompatActivity() {
 
         Toast.makeText(this, "开始测试: ${tool.name}", Toast.LENGTH_SHORT).show()
 
+        // 获取默认设置
+        val defaultContact = getDefaultContact()
+        val defaultMessage = getDefaultMessage()
+        val pinyinInitials = com.bridge.util.PinyinUtil.toPinyinInitials(defaultContact)
+
         Thread {
             try {
+                // 设置剪贴板为默认联系人的拼音首字母
+                android.util.Log.d("ToolManager", "设置剪贴板: $pinyinInitials (联系人: $defaultContact)")
+                runOnUiThread {
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText(null, pinyinInitials))
+                }
+                randomDelay(500, 1000)
+
                 // 获取执行链
                 val executionChain = ToolManager.getExecutionChain(this, tool.id)
+                android.util.Log.d("ToolManager", "执行链: ${executionChain.map { it.name }}")
 
                 for (t in executionChain) {
                     android.util.Log.d("ToolManager", "执行工具: ${t.name}")
@@ -216,7 +254,14 @@ class ToolManagerActivity : AppCompatActivity() {
 
                                 service.clickAt(x, y)
                                 android.util.Log.d("ToolManager", "点击 ${t.name}: ($x, $y)")
-                                randomDelay(1500, 3600)
+
+                                // 根据工具名称设置不同的延迟
+                                when {
+                                    t.name.contains("搜索") -> randomDelay(4500, 9000)
+                                    t.name.contains("剪贴板") || t.name.contains("输入法") -> randomDelay(4500, 9000)
+                                    t.name.contains("联系人") -> randomDelay(1500, 3600)
+                                    else -> randomDelay(1500, 3600)
+                                }
                             }
                         }
                     }

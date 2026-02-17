@@ -16,6 +16,12 @@ import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
 
+    companion object {
+        private const val PREF_NAME = "bridge_settings"
+        private const val KEY_CONTACT = "default_contact"
+        private const val KEY_MESSAGE = "default_message"
+    }
+
     private lateinit var statusText: TextView
     private lateinit var accessibilityBtn: Button
     private lateinit var contactInput: EditText
@@ -33,6 +39,9 @@ class MainActivity : AppCompatActivity() {
         // 初始化默认工具
         ToolManager.initDefaultTools(this)
 
+        // 加载保存的设置
+        loadSettings()
+
         // 确保 BridgeService 启动
         startBridgeService()
 
@@ -46,18 +55,49 @@ class MainActivity : AppCompatActivity() {
 
         // 测试搜索联系人
         findViewById<Button>(R.id.testSearchBtn).setOnClickListener {
+            saveSettings()
             testSearch()
         }
 
         // 测试发送消息
         findViewById<Button>(R.id.testSendBtn).setOnClickListener {
+            saveSettings()
             testSend()
         }
 
         // 工具管理按钮
         findViewById<Button>(R.id.toolManagerBtn).setOnClickListener {
+            saveSettings()
             startActivity(Intent(this, ToolManagerActivity::class.java))
         }
+    }
+
+    // 加载保存的设置
+    private fun loadSettings() {
+        val prefs = getSharedPreferences(PREF_NAME, MODE_PRIVATE)
+        contactInput.setText(prefs.getString(KEY_CONTACT, "1810835"))
+        messageInput.setText(prefs.getString(KEY_MESSAGE, "test"))
+    }
+
+    // 保存设置
+    private fun saveSettings() {
+        val contact = contactInput.text.toString().trim()
+        val message = messageInput.text.toString().trim()
+        getSharedPreferences(PREF_NAME, MODE_PRIVATE)
+            .edit()
+            .putString(KEY_CONTACT, contact)
+            .putString(KEY_MESSAGE, message)
+            .apply()
+    }
+
+    // 获取默认联系人
+    fun getDefaultContact(): String {
+        return contactInput.text.toString().trim()
+    }
+
+    // 获取默认消息
+    fun getDefaultMessage(): String {
+        return messageInput.text.toString().trim()
     }
 
     private fun startBridgeService() {
