@@ -12,6 +12,9 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.bridge.action.ActionDispatcher
 import com.bridge.action.WeChatActionEngine
+import com.bridge.model.ContactData
+import com.bridge.model.MessageData
+import com.bridge.model.ReadResult
 import com.bridge.model.Task
 import com.bridge.model.TaskResult
 import kotlinx.coroutines.CoroutineScope
@@ -62,6 +65,230 @@ class BridgeAccessibilityService : AccessibilityService() {
      */
     suspend fun executeSendMessage(task: Task): TaskResult {
         return actionEngine.execute(task, this)
+    }
+
+    // ==================== 数据读取方法 ====================
+
+    /**
+     * 读取微信首页聊天列表
+     * 前提：当前已在微信首页
+     * @return ReadResult 包含联系人列表
+     */
+    fun readChatList(): ReadResult {
+        return try {
+            val root = rootInActiveWindow
+            if (root == null) {
+                Log.w(TAG, "readChatList: 无活动窗口")
+                return ReadResult.error("无活动窗口")
+            }
+
+            // 检查是否在微信
+            val packageName = root.packageName?.toString()
+            if (packageName != WECHAT_PACKAGE) {
+                Log.w(TAG, "readChatList: 不在微信中, package=$packageName")
+                return ReadResult.error("不在微信应用中")
+            }
+
+            val contacts = mutableListOf<ContactData>()
+            val seenNames = mutableSetOf<String>()
+
+            // 遍历UI树查找联系人节点
+            collectChatListItems(root, contacts, seenNames, 0, 15)
+
+            Log.d(TAG, "读取到 ${contacts.size} 个联系人")
+            if (contacts.isEmpty()) {
+                ReadResult.error("未读取到联系人，请确保在微信首页")
+            } else {
+                ReadResult.successContacts(contacts)
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "读取聊天列表失败", e)
+            ReadResult.error("读取失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 递归收集聊天列表项
+     */
+    private fun collectChatListItems(
+        node: AccessibilityNodeInfo,
+        contacts: MutableList<ContactData>,
+        seenNames: MutableSet<String>,
+        depth: Int,
+        maxDepth: Int
+    ) {
+        if (depth > maxDepth) return
+
+        // 尝试从当前节点提取联系人信息
+        val contact = extractContactFromNode(node)
+        if (contact != null && contact.name !in seenNames) {
+            // 排除常见的非联系人文本
+            if (isValidContactName(contact.name)) {
+                seenNames.add(contact.name)
+                contacts.add(contact)
+            }
+        }
+
+        // 递归处理子节点
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectChatListItems(child, contacts, seenNames, depth + 1, maxDepth)
+        }
+    }
+
+    /**
+     * 从节点提取联系人信息
+     */
+    private fun extractContactFromNode(node: AccessibilityNodeInfo): ContactData? {
+        // 获取文本内容
+        val text = node.text?.toString()?.trim()
+        if (text.isNullOrEmpty() || text.length < 2) {
+            return null
+        }
+
+        // 检查节点特征：聊天列表项通常可点击
+        if (!node.isClickable && node.parent?.isClickable != true) {
+            return null
+        }
+
+        // 检查是否是联系人名称（通常在列表项的上半部分）
+        val bounds = Rect()
+        node.getBoundsInScreen(bounds)
+
+        // 排除太大或太小的节点
+        if (bounds.height() < 20 || bounds.height() > 200) {
+            return null
+        }
+
+        return ContactData(
+            name = text,
+            displayName = text,
+            lastMessage = null,
+            lastTime = null,
+            unreadCount = 0
+        )
+    }
+
+    /**
+     * 判断是否是有效的联系人名称
+     */
+    private fun isValidContactName(name: String): Boolean {
+        // 排除常见的UI文本
+        val invalidNames = setOf(
+            "微信", "通讯录", "发现", "我",
+            "搜索", "扫一扫", "收付款",
+            "设置", "朋友圈", "视频号"
+        )
+        if (name in invalidNames) return false
+
+        // 排除纯数字时间格式 (如 "12:30")
+        if (name.matches(Regex("\\d{1,2}:\\d{2}"))) return false
+
+        // 排除日期格式 (如 "昨天", "周一")
+        if (name in setOf("昨天", "前天", "周一", "周二", "周三", "周四", "周五", "周六", "周日")) return false
+
+        return true
+    }
+
+    /**
+     * 读取当前聊天界面的消息记录
+     * 前提：当前已在聊天界面
+     * @param contactName 联系人名称（用于标识发送者）
+     * @return ReadResult 包含消息列表
+     */
+    fun readChatHistory(contactName: String): ReadResult {
+        return try {
+            val root = rootInActiveWindow
+            if (root == null) {
+                Log.w(TAG, "readChatHistory: 无活动窗口")
+                return ReadResult.error("无活动窗口")
+            }
+
+            // 检查是否在微信
+            val packageName = root.packageName?.toString()
+            if (packageName != WECHAT_PACKAGE) {
+                Log.w(TAG, "readChatHistory: 不在微信中")
+                return ReadResult.error("不在微信应用中")
+            }
+
+            val messages = mutableListOf<MessageData>()
+            val screenBounds = getScreenBounds()
+            val centerX = screenBounds.width() / 2
+
+            // 遍历UI树收集消息
+            collectMessages(root, messages, contactName, centerX, 0, 20)
+
+            Log.d(TAG, "读取到 ${messages.size} 条消息")
+            if (messages.isEmpty()) {
+                ReadResult.error("未读取到消息，请确保在聊天界面")
+            } else {
+                ReadResult.successMessages(messages)
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "读取聊天记录失败", e)
+            ReadResult.error("读取失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 递归收集消息
+     */
+    private fun collectMessages(
+        node: AccessibilityNodeInfo,
+        messages: MutableList<MessageData>,
+        contactName: String,
+        screenCenterX: Int,
+        depth: Int,
+        maxDepth: Int
+    ) {
+        if (depth > maxDepth) return
+
+        val text = node.text?.toString()?.trim()
+
+        // 检查是否是消息文本节点
+        if (!text.isNullOrEmpty() && text.length >= 1) {
+            // 排除时间分隔符
+            if (!isTimeSeparator(text)) {
+                // 判断是否为自己发送的消息（根据位置）
+                val bounds = Rect()
+                node.getBoundsInScreen(bounds)
+
+                // 右侧消息是自己发送的
+                val isSelf = bounds.left > screenCenterX
+
+                // 生成消息ID
+                val msgId = "${text.hashCode()}_${System.nanoTime()}".hashCode().toLong() and 0x7FFFFFFFFFFFFFFF
+
+                messages.add(MessageData(
+                    id = msgId,
+                    sender = if (isSelf) "我" else contactName,
+                    content = text,
+                    type = "text",
+                    time = System.currentTimeMillis(),
+                    isSelf = isSelf
+                ))
+            }
+        }
+
+        // 递归处理子节点
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            collectMessages(child, messages, contactName, screenCenterX, depth + 1, maxDepth)
+        }
+    }
+
+    /**
+     * 判断是否是时间分隔符文本
+     */
+    private fun isTimeSeparator(text: String): Boolean {
+        // 时间格式: "12:30", "昨天 12:30", "2024年1月15日"
+        if (text.matches(Regex("\\d{1,2}:\\d{2}"))) return true
+        if (text.matches(Regex("昨天.*\\d{1,2}:\\d{2}"))) return true
+        if (text.matches(Regex("\\d{4}年\\d{1,2}月\\d{1,2}日.*"))) return true
+        if (text in setOf("以下为新消息", "查看更多消息")) return true
+        return false
     }
 
     /**
