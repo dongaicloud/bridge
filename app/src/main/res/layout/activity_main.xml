@@ -69,6 +69,29 @@
             android:backgroundTint="#9C27B0"
             android:layout_marginTop="4dp"/>
 
+        <Button
+            android:id="@+id/ocrTestBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="OCR 测试"
+            android:backgroundTint="#00BCD4"
+            android:layout_marginTop="4dp"/>
+
+        <!-- OCR 结果显示 -->
+        <TextView
+            android:id="@+id/ocrResultText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="11sp"
+            android:fontFamily="monospace"
+            android:background="#FFF3E0"
+            android:padding="8dp"
+            android:layout_marginTop="4dp"
+            android:maxLines="15"
+            android:scrollbars="vertical"
+            android:visibility="gone"
+            android:textColor="#333333"/>
+
         <!-- 分隔线 -->
         <View
             android:layout_width="match_parent"

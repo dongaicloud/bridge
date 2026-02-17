@@ -94,4 +94,7 @@ dependencies {
 
     // JSON
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // ML Kit Text Recognition (中文支持)
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
 }

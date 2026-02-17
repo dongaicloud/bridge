@@ -1,17 +1,25 @@
 package com.bridge
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.bridge.ocr.OcrService
+import com.bridge.ocr.ScreenshotHelper
 import com.bridge.util.Tool
 import com.bridge.util.ToolManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.random.Random
 
 class MainActivity : AppCompatActivity() {
@@ -26,6 +34,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var accessibilityBtn: Button
     private lateinit var contactInput: EditText
     private lateinit var messageInput: EditText
+    private lateinit var ocrResultText: TextView
+
+    private var screenshotHelper: ScreenshotHelper? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,6 +46,10 @@ class MainActivity : AppCompatActivity() {
         accessibilityBtn = findViewById(R.id.accessibilityBtn)
         contactInput = findViewById(R.id.contactInput)
         messageInput = findViewById(R.id.messageInput)
+        ocrResultText = findViewById(R.id.ocrResultText)
+
+        // 初始化截图助手
+        screenshotHelper = ScreenshotHelper(this)
 
         // 初始化默认工具
         ToolManager.initDefaultTools(this)
@@ -69,6 +84,11 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.toolManagerBtn).setOnClickListener {
             saveSettings()
             startActivity(Intent(this, ToolManagerActivity::class.java))
+        }
+
+        // OCR 测试按钮
+        findViewById<Button>(R.id.ocrTestBtn).setOnClickListener {
+            startOcrTest()
         }
     }
 
@@ -408,5 +428,118 @@ class MainActivity : AppCompatActivity() {
         val y = (screenBounds.height() * tool.y).toInt()
 
         return service.clickAt(x, y)
+    }
+
+    // ==================== OCR 测试 ====================
+
+    /**
+     * 开始 OCR 测试
+     */
+    private fun startOcrTest() {
+        if (screenshotHelper?.isInitialized() == true) {
+            // 已有权限，直接执行
+            executeOcrTest()
+        } else {
+            // 请求截图权限
+            val mediaProjectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
+            startActivityForResult(mediaProjectionManager.createScreenCaptureIntent(), REQUEST_CODE_SCREENSHOT)
+        }
+    }
+
+    /**
+     * 执行 OCR 测试
+     */
+    private fun executeOcrTest() {
+        ocrResultText.visibility = View.VISIBLE
+        ocrResultText.text = "正在截图..."
+
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                // 1. 截图
+                val screenshotResult = withContext(Dispatchers.IO) {
+                    screenshotHelper?.capture() ?: ScreenshotHelper.ScreenshotResult(false, error = "ScreenshotHelper not initialized")
+                }
+
+                if (!screenshotResult.success || screenshotResult.bitmap == null) {
+                    ocrResultText.text = "截图失败: ${screenshotResult.error}"
+                    return@launch
+                }
+
+                ocrResultText.text = "截图成功，正在识别..."
+
+                // 2. OCR 识别
+                val ocrResult = withContext(Dispatchers.IO) {
+                    OcrService.recognize(screenshotResult.bitmap!!)
+                }
+
+                if (!ocrResult.success) {
+                    ocrResultText.text = "OCR 失败: ${ocrResult.error}"
+                    return@launch
+                }
+
+                // 3. 显示结果
+                val resultText = buildString {
+                    appendLine("=== OCR 测试结果 ===")
+                    appendLine("耗时: ${ocrResult.processingTimeMs}ms")
+                    appendLine("识别到 ${ocrResult.textBlocks.size} 个文本块")
+                    appendLine()
+                    appendLine("=== 识别文本 ===")
+
+                    // 按位置排序（从上到下，从左到右）
+                    val sortedBlocks = ocrResult.textBlocks.sortedWith(
+                        compareBy({ it.bounds.top }, { it.bounds.left })
+                    )
+
+                    for ((index, block) in sortedBlocks.withIndex()) {
+                        appendLine("[${index + 1}] ${block.text}")
+                        appendLine("    位置: (${block.bounds.left}, ${block.bounds.top}) - (${block.bounds.right}, ${block.bounds.bottom})")
+                    }
+
+                    appendLine()
+                    appendLine("=== 完整文本 ===")
+                    append(ocrResult.fullText)
+                }
+
+                ocrResultText.text = resultText
+
+                Toast.makeText(this@MainActivity,
+                    "OCR 完成: ${ocrResult.textBlocks.size} 个文本块, ${ocrResult.processingTimeMs}ms",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+            } catch (e: Exception) {
+                android.util.Log.e("Bridge", "OCR test failed", e)
+                ocrResultText.text = "OCR 测试异常: ${e.message}"
+            }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode == REQUEST_CODE_SCREENSHOT) {
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                // 初始化 MediaProjection
+                val success = screenshotHelper?.initMediaProjection(resultCode, data) ?: false
+                if (success) {
+                    Toast.makeText(this, "截图权限已获取", Toast.LENGTH_SHORT).show()
+                    // 执行 OCR 测试
+                    executeOcrTest()
+                } else {
+                    Toast.makeText(this, "截图权限初始化失败", Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(this, "截图权限被拒绝", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        screenshotHelper?.release()
+    }
+
+    companion object {
+        private const val REQUEST_CODE_SCREENSHOT = 1001
     }
 }
