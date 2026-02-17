@@ -28,6 +28,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREF_NAME = "bridge_settings"
         private const val KEY_CONTACT = "default_contact"
         private const val KEY_MESSAGE = "default_message"
+        private const val REQUEST_CODE_SCREENSHOT = 1001
     }
 
     private lateinit var statusText: TextView
@@ -537,9 +538,5 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         screenshotHelper?.release()
-    }
-
-    companion object {
-        private const val REQUEST_CODE_SCREENSHOT = 1001
     }
 }

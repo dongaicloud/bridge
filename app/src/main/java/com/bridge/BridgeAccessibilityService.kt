@@ -155,6 +155,18 @@ class BridgeAccessibilityService : AccessibilityService() {
     }
 
     /**
+     * 判断文本是否可能是联系人名称
+     */
+    private fun isValidContactName(text: String): Boolean {
+        // 排除纯数字、时间格式、常见按钮文字等
+        if (text.matches(Regex("\\d+"))) return false
+        if (text.matches(Regex("\\d{1,2}:\\d{2}"))) return false
+        if (text in setOf("搜索", "添加", "更多", "设置", "取消", "确定", "微信")) return false
+        // 联系人名称通常是中文或包含字母的混合
+        return text.any { it.isLetter() }
+    }
+
+    /**
      * 读取当前聊天界面的消息记录
      * 前提：当前已在聊天界面
      * @param contactName 联系人名称（用于标识发送者）
