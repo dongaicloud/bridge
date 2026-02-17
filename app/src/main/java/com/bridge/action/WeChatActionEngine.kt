@@ -50,20 +50,16 @@ class WeChatActionEngine {
             }
             delayAfterOpenApp()
 
-            // 检查是否在首页，如果不在则返回
-            var attempts = 0
-            while (!isInWeChatHome(service) && attempts < 3) {
-                service.goBack()
-                delayAfterClick()
-                attempts++
-            }
+            // 检查是否在微信应用中
+            val root = service.getRootNode()
+            val isInWeChat = root?.packageName?.toString() == BridgeAccessibilityService.WECHAT_PACKAGE
 
-            if (isInWeChatHome(service)) {
-                Log.d(TAG, "已到达微信首页")
-                TaskResult.ok("已到达微信首页")
+            if (isInWeChat) {
+                Log.d(TAG, "已到达微信: ${root?.packageName}")
+                TaskResult.ok("已打开微信")
             } else {
-                Log.w(TAG, "无法到达微信首页")
-                TaskResult.ok("已打开微信")  // 即使不在首页也算成功
+                Log.w(TAG, "未能打开微信")
+                TaskResult.fail("未能打开微信")
             }
         } catch (e: Exception) {
             Log.e(TAG, "导航到首页失败", e)
@@ -131,20 +127,6 @@ class WeChatActionEngine {
         } catch (e: Exception) {
             Log.e(TAG, "导航到聊天界面失败", e)
             TaskResult.fail("导航失败: ${e.message}")
-        }
-    }
-
-    /**
-     * 检查是否在微信首页
-     */
-    private fun isInWeChatHome(service: BridgeAccessibilityService): Boolean {
-        val root = service.getRootNode() ?: return false
-        // 检查是否有"微信"标题文本
-        val titleNodes = root.findAccessibilityNodeInfosByText("微信")
-        // 首页应该有底部导航栏的"微信"Tab
-        return titleNodes.any { node ->
-            val parent = node.parent
-            parent?.isClickable == true || node.isClickable
         }
     }
 
